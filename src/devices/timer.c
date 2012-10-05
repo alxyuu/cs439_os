@@ -20,6 +20,8 @@
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
 
+static struct list sleeping_list;
+
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
@@ -29,6 +31,7 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+static bool tick_cmp(const struct list_elem *a, const struct list_elem *b, void* aux);
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -37,6 +40,7 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  list_init(&sleeping_list);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -89,20 +93,20 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
+  struct list_elem *e;
   enum intr_level old_level;
-  int64_t start = timer_ticks ();
+  int64_t time = timer_ticks() + ticks;
   struct thread *cur = thread_current ();
+  struct thread *t;
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed(start) < ticks) 
-  {
-//    printf("waiting for %" PRId64 " ticks, %" PRId64 " ticks passed\n",ticks,timer_elapsed(start));
-    /*Put the current thread to sleep. */
-    old_level = intr_disable ();
-    thread_block();
-    intr_set_level (old_level); 
-//    printf("waiting for %" PRId64 " ticks, woken up after %" PRId64 " ticks\n",ticks,timer_elapsed(start));
-  }
+
+  cur->wake_ticks = time;
+  sema_init(&cur->sema,0);
+//  printf("putting %s to sleep until %" PRId64 "\n",cur->name,time);
+  list_insert_ordered(&sleeping_list,&cur->sleepelem,tick_cmp,0);
+  sema_down(&cur->sema);
+//  printf("woken at tick %" PRId64 ", should be %" PRId64 "\n", timer_ticks(), time);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -174,13 +178,25 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
-  
+  struct list_elem *e;
+  struct thread *t;
   ticks++;
+//  printf("tick %"PRId64"\n",ticks);
+  for(e = list_begin(&sleeping_list); e != list_end(&sleeping_list);)
+  {
+    t = list_entry(e,struct thread,sleepelem);
+    if(ticks >= t->wake_ticks) {
+      e = list_remove(e);
+      sema_up(&t->sema);
+    } else {
+      break;
+    }
+  }
   thread_tick ();
 }
 
@@ -253,4 +269,9 @@ real_time_delay (int64_t num, int32_t denom)
      the possibility of overflow. */
   ASSERT (denom % 1000 == 0);
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000)); 
+}
+
+static bool tick_cmp(const struct list_elem *a, const struct list_elem *b, void* aux)
+{
+  return list_entry(a,struct thread,sleepelem)->wake_ticks < list_entry(b,struct thread,sleepelem)->wake_ticks;
 }

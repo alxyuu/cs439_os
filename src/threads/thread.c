@@ -132,15 +132,22 @@ thread_tick (void)
   if (t == idle_thread)
   {
     idle_ticks++;
-    printf("idle tick\n");
+//    printf("idle tick\n");
     for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e))
     {
       next = list_entry(e, struct thread, allelem);
       if(next->status == THREAD_BLOCKED) {
-        printf("unblocking priority %d\n",next->priority);
+//        printf("unblocking priority %d\n",next->priority);
         thread_unblock(next);
       }
     }
+//    printf("current ready list: \n");
+//    for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e))
+//    {
+//      next = list_entry(e, struct thread, elem);
+//      printf("%s\n",next->name);
+//    }
+
 //    while(!list_empty(&blocked_list))
 //    {
 //      printf("unblocking priority %d\n",next->priority);
@@ -265,18 +272,38 @@ thread_block (void)
 void
 thread_unblock (struct thread *t) 
 {
+  int status;
+  struct list_elem *e;
   enum intr_level old_level;
 
   ASSERT (is_thread (t));
 
   old_level = intr_disable ();
-  ASSERT (t->status == THREAD_BLOCKED);
+//  if(t->status != THREAD_BLOCKED) {
+//    if(t->status == THREAD_READY) status = 1;
+//    else if(t->status == THREAD_RUNNING) status = 2;
+//    else if(t->status == THREAD_BLOCKED) status = 3;
+//    else if(t->status == THREAD_DYING) status = 4;
+//    else status = -1;
+//    printf("%s not blocked with status %d\n",t->name,status);
+//    printf("current ready list: \n");
+//    for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e))
+//    {
+//      printf("%s\n",list_entry(e, struct thread, elem)->name);
+//    }
+//
+//  }
+//  ASSERT (t->status == THREAD_BLOCKED);
   list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
-//  if( t->priority > thread_current()->priority && intr_context() ) {
-//    intr_yield_on_return();
-//  }
   intr_set_level (old_level);
+  if( t->priority > thread_current()->priority ) {
+    if( intr_context() ) {
+      intr_yield_on_return();
+    } else {
+      thread_yield();
+    }
+  }
 }
 
 /* Returns the name of the running thread. */
@@ -338,14 +365,29 @@ thread_exit (void)
 void
 thread_yield (void) 
 {
+  struct list_elem *e;
   struct thread *cur = thread_current ();
   enum intr_level old_level;
   
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+  if (cur != idle_thread) {
+    for (e = list_rbegin(&ready_list); e != list_rend(&ready_list); e = list_prev(e)) {
+      if(cur->priority <= list_entry(e, struct thread, elem)->priority)
+      {
+        break;
+      }
+    }
+    list_insert(e->next,&cur->elem);
+//    printf("%s yielding, current ready list: \n",cur->name);
+//    for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e))
+//    {
+//      printf("%s\n",list_entry(e, struct thread, elem)->name);
+//    }
+
+//    list_push_back (&ready_list, &cur->elem);
+  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);

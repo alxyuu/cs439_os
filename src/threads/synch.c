@@ -33,6 +33,7 @@
 #include "threads/thread.h"
 
 bool lock_donate_priority(struct lock *lock, int priority);
+bool lock_donate_priority_nest(struct lock *lock, int priority);
 static bool lock_priority_cmp(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
@@ -209,20 +210,23 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  int i;
+  struct thread *t = thread_current();
+  t->waitlist[t->waitlist_length++] = lock;
   if(lock->holder != NULL) {
-    if(lock_donate_priority(lock,thread_current()->priority)) {
+    if(lock_donate_priority_nest(lock,t->priority)) {
       thread_yield();
     }
   }
 
   sema_down (&lock->semaphore);
-  struct thread *t = thread_current();
   lock->holder = t;
   lock->priority = t->priority;
   if(list_size(&t->locklist) == 0) {
     t->original_priority = t->priority;
   }
   list_insert_ordered(&t->locklist,&lock->elem,lock_priority_cmp,0);
+  t->waitlist_length--;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -259,20 +263,23 @@ lock_release (struct lock *lock)
   struct thread *t = lock->holder;
   int old_priority = t->priority;
   list_remove(&lock->elem);
+  lock->priority = 0;
   if(list_size(&t->locklist) == 0) {
     t->priority = t->original_priority;
   } else {
+    list_sort(&t->locklist,lock_priority_cmp,0);
     t->priority = list_entry(list_begin(&t->locklist),struct lock,elem)->priority;
   }
-  if (old_priority != t->priority)
-    printf("restoring priority %d\n",t->priority);
-  lock->priority = 0;
+  if (old_priority != t->priority) {
+//    printf("restoring priority %d\n",t->priority);
+    lock->holder = NULL;
+  }
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
-//  if(modified_priority) {
-//    thread_yield();
-//  }
+  if (old_priority > t->priority) {
+    thread_yield();
+  }
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -377,13 +384,24 @@ cond_broadcast (struct condition *cond, struct lock *lock)
     cond_signal (cond, lock);
 }
 
+bool lock_donate_priority_nest(struct lock *lock, int priority) {
+  if(lock->holder == NULL)
+    return 0;
+  bool ret = 0;
+  int i;
+  for(i = 0; i < lock->holder->waitlist_length; i++) {
+    ret = ret || lock_donate_priority(lock->holder->waitlist[i],priority);
+  }
+  return lock_donate_priority(lock,priority) || ret;
+}
+
 bool lock_donate_priority(struct lock *lock, int priority) {
   if(lock->holder == NULL || priority <= lock->priority)
     return 0;
 
   lock->priority = priority;
   if(priority > lock->holder->priority) {
-    printf("accepting donation of %d\n",priority);
+//    printf("accepting donation of %d\n",priority);
     lock->holder->priority = priority;
     return 1;
   }

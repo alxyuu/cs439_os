@@ -32,6 +32,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+bool lock_donate_priority(struct lock *lock, int priority);
+static bool lock_priority_cmp(const struct list_elem *a, const struct list_elem *b, void *aux);
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -187,7 +190,7 @@ lock_init (struct lock *lock)
   ASSERT (lock != NULL);
 
   lock->holder = NULL;
-  lock->priority = -1;
+  lock->priority = 0;
   sema_init (&lock->semaphore, 1);
 }
 
@@ -207,15 +210,19 @@ lock_acquire (struct lock *lock)
   ASSERT (!lock_held_by_current_thread (lock));
 
   if(lock->holder != NULL) {
-    if(thread_current()->priority > lock->holder->priority) {
-      lock->holder->priority = thread_current()->priority;
+    if(lock_donate_priority(lock,thread_current()->priority)) {
       thread_yield();
     }
   }
 
   sema_down (&lock->semaphore);
-  lock->holder = thread_current();
-  lock->priority = thread_current()->priority;
+  struct thread *t = thread_current();
+  lock->holder = t;
+  lock->priority = t->priority;
+  if(list_size(&t->locklist) == 0) {
+    t->original_priority = t->priority;
+  }
+  list_insert_ordered(&t->locklist,&lock->elem,lock_priority_cmp,0);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -244,22 +251,28 @@ lock_try_acquire (struct lock *lock)
    make sense to try to release a lock within an interrupt
    handler. */
 void
-lock_release (struct lock *lock) 
+lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
-  bool modified_priority = 0;
-  if(lock->holder->priority != lock->priority) {
-    lock->holder->priority = lock->priority;
-    modified_priority = 1;
+  struct thread *t = lock->holder;
+  int old_priority = t->priority;
+  list_remove(&lock->elem);
+  if(list_size(&t->locklist) == 0) {
+    t->priority = t->original_priority;
+  } else {
+    t->priority = list_entry(list_begin(&t->locklist),struct lock,elem)->priority;
   }
+  if (old_priority != t->priority)
+    printf("restoring priority %d\n",t->priority);
+  lock->priority = 0;
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
-  if(modified_priority) {
-    thread_yield();
-  }
+//  if(modified_priority) {
+//    thread_yield();
+//  }
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -362,4 +375,21 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 
   while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
+}
+
+bool lock_donate_priority(struct lock *lock, int priority) {
+  if(lock->holder == NULL || priority <= lock->priority)
+    return 0;
+
+  lock->priority = priority;
+  if(priority > lock->holder->priority) {
+    printf("accepting donation of %d\n",priority);
+    lock->holder->priority = priority;
+    return 1;
+  }
+  return 0;
+}
+
+static bool lock_priority_cmp(const struct list_elem *a, const struct list_elem *b, void *aux) {
+  return list_entry(a,struct lock,elem)->priority < list_entry(a,struct lock,elem)->priority;
 }

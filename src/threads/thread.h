@@ -111,15 +111,14 @@ struct thread
     int original_priority;
 
     struct list locklist;
-    struct lock *waitlist[10];
-    int waitlist_length;
+    struct lock *waiting;
   };
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
-
+struct list ready_list;
 void thread_init (void);
 void thread_start (void);
 
@@ -150,5 +149,6 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+bool priority_cmp(const struct list_elem* a, const struct list_elem* b, void* aux);
 
 #endif /* threads/thread.h */

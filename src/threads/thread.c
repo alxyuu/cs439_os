@@ -22,7 +22,7 @@
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-static struct list ready_list;
+//static struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -342,7 +342,7 @@ thread_yield (void)
       }
     }
     list_insert(e->next,&cur->elem);
-    //list_push_back (&ready_list, &cur->elem);
+//    list_push_back (&ready_list, &cur->elem);
   }
   cur->status = THREAD_READY;
   schedule ();
@@ -370,9 +370,19 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  int old_priority = thread_current ()->priority;
-  thread_current()->priority = new_priority;
-  if(old_priority > new_priority)
+  struct thread *t = thread_current();
+  int old_priority = t->priority;
+  if(t->original_priority == -1) {
+    t->priority = new_priority;
+  } else {
+    if(t->priority > new_priority) {
+      t->original_priority = new_priority;
+    } else {
+      t->priority = new_priority;
+      t->original_priority = -1;
+    }
+  }
+  if(old_priority > t->priority)
     thread_yield();
 }
 
@@ -500,7 +510,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   list_init(&t->locklist);
-  t->waitlist_length = 0;
+  t->original_priority = -1;
+  t->waiting = NULL;
   list_push_back (&all_list, &t->allelem);
 }
 
@@ -525,10 +536,12 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
+  if (list_empty (&ready_list)) {
     return idle_thread;
-  else
+  } else {
+//    list_sort(&ready_list,priority_cmp,0);
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -622,6 +635,6 @@ allocate_tid (void)
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
-static bool priority_cmp(const struct list_elem* a, const struct list_elem* b, void* aux) {
+bool priority_cmp(const struct list_elem* a, const struct list_elem* b, void* aux) {
     return list_entry(a,struct thread,elem)->priority > list_entry(b,struct thread,elem)->priority;
 }

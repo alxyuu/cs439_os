@@ -403,20 +403,15 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 bool lock_donate_priority_nest(struct lock *lock, int priority) {
   if(lock->holder == NULL)
     return 0;
-  bool ret = 0;
-  struct thread* t = lock->holder;
+  bool ret = lock_donate_priority(lock,priority);
   int i;
-//  for(i = 0; i < lock->holder->waitlist_length; i++) {
-//    ret = ret || lock_donate_priority(lock->holder->waitlist[i],priority);
-//  }
   for(i = 0; i < 10; i++) {
-    if(t->waiting == NULL) {
+    if(lock->holder->waiting == NULL) {
       break;
     }
-    ret = ret || lock_donate_priority(t->waiting,priority);
-    t = list_entry(list_begin(&t->waiting->semaphore.waiters),struct thread,elem);
+    ret = lock_donate_priority(lock->holder->waiting,priority) || ret;
+    lock = lock->holder->waiting;
   }
-  return lock_donate_priority(lock,priority) || ret;
 }
 
 bool lock_donate_priority(struct lock *lock, int priority) {

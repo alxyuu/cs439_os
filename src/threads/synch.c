@@ -65,8 +65,6 @@ sema_init (struct semaphore *sema, unsigned value)
 void
 sema_down (struct semaphore *sema) 
 {
-  struct list_elem *e;
-  struct thread *t;
   enum intr_level old_level;
 
   ASSERT (sema != NULL);
@@ -76,13 +74,6 @@ sema_down (struct semaphore *sema)
   while (sema->value == 0) 
     {
       list_push_back (&sema->waiters, &thread_current ()->elem);
-//      t = thread_current();
-//      for(e = list_rbegin(&sema->waiters); e != list_rend(&sema->waiters); e = list_prev(e)) {
-//        if( t->priority <= list_entry(e, struct thread, elem)->priority) {
-//          break;
-//        }
-//      }
-//      list_insert(e->next,&t->elem);
       thread_block ();
     }
   sema->value--;
@@ -281,13 +272,8 @@ lock_release (struct lock *lock)
     list_sort(&t->locklist,lock_priority_cmp,0);
     t->priority = list_entry(list_rbegin(&t->locklist),struct lock,elem)->priority;
   }
-  if (old_priority != t->priority) {
-//    printf("restoring priority %d\n",t->priority);
-    lock->holder = NULL;
-  }
 
   lock->holder = NULL;
-//  list_sort(&lock->semaphore.waiters,priority_cmp,0);
   sema_up (&lock->semaphore);
   if (old_priority > t->priority) {
     thread_yield();
@@ -403,15 +389,16 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 bool lock_donate_priority_nest(struct lock *lock, int priority) {
   if(lock->holder == NULL)
     return 0;
-  bool ret = lock_donate_priority(lock,priority);
+  bool ret = 0;
   int i;
   for(i = 0; i < 10; i++) {
-    if(lock->holder->waiting == NULL) {
+    if(lock == NULL) {
       break;
     }
-    ret = lock_donate_priority(lock->holder->waiting,priority) || ret;
+    ret = lock_donate_priority(lock,priority) || ret;
     lock = lock->holder->waiting;
   }
+  return ret;
 }
 
 bool lock_donate_priority(struct lock *lock, int priority) {

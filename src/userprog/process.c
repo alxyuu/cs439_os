@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <list.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
@@ -38,10 +39,22 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  printf("creating thread\n");
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name, PRI_DEFAULT+1, start_process, fn_copy);
+
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+
+  printf("thread %d created\n",tid);
+//  printf("ready: \n");
+//  struct list_elem *e;
+//  struct thread *next;
+//  for(e = list_begin(&ready_list); e != list_end(&ready_list); e = list_next(e)) {
+//    next = list_entry(e, struct thread, elem);
+//    printf("tid: %d\n",next->tid);
+//  }
+
   return tid;
 }
 
@@ -50,7 +63,24 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
+  printf("running thread\n");
   char *file_name = file_name_;
+  char *parsed_filename;
+  char *save_ptr;
+//  char** args = (char**) palloc_get_page(0);
+  char *args[128];
+  int num_args = 0;
+  /* Create a new thread to execute FILE_NAME. */
+  /* start by parsing *file_name and saving the result into parsed_name */
+
+  /* now to save the arguments into a string array */
+  char *temp;
+  for (temp = strtok_r (file_name, " ", &save_ptr); temp != NULL; temp = strtok_r (NULL, " ", &save_ptr)) { // each call to strtok_r will now get an argument
+     args[num_args++] = temp;
+  }
+
+  parsed_filename = args[0];
+
   struct intr_frame if_;
   bool success;
 
@@ -59,13 +89,22 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (parsed_filename, &if_.eip, &if_.esp);
+
+//  char** c_esp = (char**)if_.esp;
+//  *c_esp = args;
+//  if_.esp -= sizeof(char*);
+//  int* i_esp = (int*)if_.esp;
+//  *i_esp = num_args;
+//  if_.esp -= sizeof(int);
+
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
-  if (!success) 
+  palloc_free_page (parsed_filename);
+  if (!success)
     thread_exit ();
 
+  printf("finished loading\n");
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its

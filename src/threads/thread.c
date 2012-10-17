@@ -22,7 +22,7 @@
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-//static struct list ready_list;
+static struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -243,7 +243,6 @@ void
 thread_unblock (struct thread *t) 
 {
   struct list_elem *e;
-  struct thread *next;
   enum intr_level old_level;
 
   ASSERT (is_thread (t));
@@ -539,7 +538,6 @@ next_thread_to_run (void)
   if (list_empty (&ready_list)) {
     return idle_thread;
   } else {
-//    list_sort(&ready_list,priority_cmp,0);
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
   }
 }
@@ -600,7 +598,6 @@ thread_schedule_tail (struct thread *prev)
 static void
 schedule (void) 
 {
-  enum intr_level old_level;
   struct thread *cur = running_thread ();
   struct thread *next = next_thread_to_run ();
   struct thread *prev = NULL;
@@ -612,9 +609,6 @@ schedule (void)
   if (cur != next)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);
-//  old_level = intr_disable();
-//  printf("scheduled %s\n",next->name);
-//  intr_set_level(old_level);
 }
 
 /* Returns a tid to use for a new thread. */

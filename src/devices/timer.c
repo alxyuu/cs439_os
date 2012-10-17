@@ -93,20 +93,18 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  struct list_elem *e;
   enum intr_level old_level;
   int64_t time = timer_ticks() + ticks;
   struct thread *cur = thread_current ();
-  struct thread *t;
 
   ASSERT (intr_get_level () == INTR_ON);
 
   cur->wake_ticks = time;
   sema_init(&cur->sema,0);
-//  printf("putting %s to sleep until %" PRId64 "\n",cur->name,time);
+  old_level = intr_disable();
   list_insert_ordered(&sleeping_list,&cur->sleepelem,tick_cmp,0);
+  intr_set_level(old_level);
   sema_down(&cur->sema);
-//  printf("woken at tick %" PRId64 ", should be %" PRId64 "\n", timer_ticks(), time);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be

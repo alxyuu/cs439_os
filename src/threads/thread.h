@@ -94,11 +94,11 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
-    struct list_elem sleepelem;
+    struct list_elem sleepelem;         /* List element for sleeping threads */
 
-    struct semaphore sema;
+    struct semaphore sema;              /* Semaphore to track signal sleep wakeup */
 
-    int64_t wake_ticks;
+    int64_t wake_ticks;                 /* Tick at which to wake up */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -108,17 +108,17 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
 
-    int original_priority;
+    int original_priority;              /* Original priority for when priority is donated */
 
-    struct list locklist;
-    struct lock *waiting;
+    struct list locklist;               /* List of locks held by this thread */
+    struct lock *waiting;               /* Lock on which this thread is waiting */
   };
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
-struct list ready_list;
+
 void thread_init (void);
 void thread_start (void);
 

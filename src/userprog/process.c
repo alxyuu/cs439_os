@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <list.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
@@ -101,8 +100,10 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   palloc_free_page (parsed_filename);
-  if (!success)
+  if (!success) {
+    printf("failed to load\n");
     thread_exit ();
+  }
 
   printf("finished loading\n");
   /* Start the user process by simulating a return from an
@@ -256,8 +257,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
-  if (t->pagedir == NULL) 
+  if (t->pagedir == NULL) {
+    printf ("load: failed to create page directory\n");
     goto done;
+  }
   process_activate ();
 
   /* Open executable file. */
@@ -287,12 +290,16 @@ load (const char *file_name, void (**eip) (void), void **esp)
     {
       struct Elf32_Phdr phdr;
 
-      if (file_ofs < 0 || file_ofs > file_length (file))
+      if (file_ofs < 0 || file_ofs > file_length (file) ) {
+        printf("load: invalid file offset\n");
         goto done;
+      }
       file_seek (file, file_ofs);
 
-      if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
+      if (file_read (file, &phdr, sizeof phdr) != sizeof phdr) {
+        printf("load: bad header\n");
         goto done;
+      }
       file_ofs += sizeof phdr;
       switch (phdr.p_type) 
         {
@@ -306,6 +313,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
         case PT_DYNAMIC:
         case PT_INTERP:
         case PT_SHLIB:
+          printf("load: PT_SHLIB\n");
           goto done;
         case PT_LOAD:
           if (validate_segment (&phdr, file)) 
@@ -331,18 +339,24 @@ load (const char *file_name, void (**eip) (void), void **esp)
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
               if (!load_segment (file, file_page, (void *) mem_page,
-                                 read_bytes, zero_bytes, writable))
+                                 read_bytes, zero_bytes, writable)) {
+                printf("load: unable to load segment\n");
                 goto done;
+              }
             }
-          else
+          else {
+            printf("load: invalid segment\n");
             goto done;
+          }
           break;
         }
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp)) {
+    printf("load: unable to setup stack\n");
     goto done;
+  }
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;

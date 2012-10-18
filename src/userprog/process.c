@@ -62,13 +62,14 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-  printf("running thread\n");
   char *file_name = file_name_;
+  printf("running thread with argument %s\n",file_name);
   char *parsed_filename;
   char *save_ptr;
 //  char** args = (char**) palloc_get_page(0);
   char *args[128];
   int num_args = 0;
+  int i = 0;
   /* Create a new thread to execute FILE_NAME. */
   /* start by parsing *file_name and saving the result into parsed_name */
 
@@ -77,6 +78,7 @@ start_process (void *file_name_)
   for (temp = strtok_r (file_name, " ", &save_ptr); temp != NULL; temp = strtok_r (NULL, " ", &save_ptr)) { // each call to strtok_r will now get an argument
      args[num_args++] = temp;
   }
+  args[num_args] = 0;
 
   parsed_filename = args[0];
 
@@ -90,21 +92,43 @@ start_process (void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (parsed_filename, &if_.eip, &if_.esp);
 
-//  char** c_esp = (char**)if_.esp;
-//  *c_esp = args;
-//  if_.esp -= sizeof(char*);
-//  int* i_esp = (int*)if_.esp;
-//  *i_esp = num_args;
-//  if_.esp -= sizeof(int);
-
-
   /* If load failed, quit. */
-  palloc_free_page (parsed_filename);
   if (!success) {
     printf("failed to load\n");
     thread_exit ();
   }
 
+  void* _esp = if_.esp;
+  int len;
+
+  for(i = num_args-1; i >= 0; i--) {
+    len = strlen(args[i]) + 1;
+    if_.esp -= len;
+    memcpy(if_.esp,args[i],len);
+    args[i] = (char*)if_.esp;
+  }
+
+  printf("args: \n");
+  for(i = 0; i < num_args; i++) {
+    printf("args[%d]: %p\n",i,args[i]);
+  }
+
+  //align to 4
+  if_.esp -= (_esp - if_.esp)%4;
+
+  if_.esp -= sizeof(char*) * (num_args + 1);
+  memcpy(if_.esp, args, sizeof(char*) * (num_args + 1));
+  _esp = if_.esp;
+
+  if_.esp -= sizeof(char**);
+  memcpy(if_.esp, _esp, sizeof(char**));
+  if_.esp -= sizeof(int);
+  memcpy(if_.esp, &num_args, sizeof(int));
+  if_.esp -= sizeof(void*);
+  int voidp = 0;
+  memcpy(if_.esp, &voidp, sizeof(void*));
+
+  palloc_free_page (parsed_filename);
   printf("finished loading\n");
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in

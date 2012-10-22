@@ -30,29 +30,21 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
-
+  //char *name_ptr;
+  //char *name; 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
+  fn_copy = palloc_get_page (0); // get some random page at address 0?
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
-
-  printf("creating thread\n");
+  
+  //name = strtok_r(file_name, " ", &name_ptr);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT+1, start_process, fn_copy);
 
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
-
-  printf("thread %d created\n",tid);
-//  printf("ready: \n");
-//  struct list_elem *e;
-//  struct thread *next;
-//  for(e = list_begin(&ready_list); e != list_end(&ready_list); e = list_next(e)) {
-//    next = list_entry(e, struct thread, elem);
-//    printf("tid: %d\n",next->tid);
-//  }
 
   return tid;
 }
@@ -63,26 +55,23 @@ static void
 start_process (void *file_name_)
 {
   char *file_name = file_name_;
-  printf("running thread with argument %s\n",file_name);
   char *parsed_filename;
   char *save_ptr;
-//  char** args = (char**) palloc_get_page(0);
   char *args[128];
   int num_args = 0;
-  int i = 0;
+  int i;
   /* Create a new thread to execute FILE_NAME. */
   /* start by parsing *file_name and saving the result into parsed_name */
 
-  /* now to save the arguments into a string array */
+  /* save the arguments into args */
   char *temp;
-  for (temp = strtok_r (file_name, " ", &save_ptr); temp != NULL; temp = strtok_r (NULL, " ", &save_ptr)) { // each call to strtok_r will now get an argument
+  for (temp = strtok_r (file_name, " ", &save_ptr); temp != NULL; temp = strtok_r (NULL, " ", &save_ptr)) { 
      args[num_args++] = temp;
   }
   args[num_args] = 0;
+  parsed_filename = args[0]; // save the filename
 
-  parsed_filename = args[0];
-
-  struct intr_frame if_;
+  struct intr_frame if_; // contains esp
   bool success;
 
   /* Initialize interrupt frame and load executable. */
@@ -98,38 +87,39 @@ start_process (void *file_name_)
     thread_exit ();
   }
 
-  void* _esp = if_.esp;
+  void* _esp = if_.esp; // wait, is esp originally at PHYS_BASE?
   int len;
 
   for(i = num_args-1; i >= 0; i--) {
-    len = strlen(args[i]) + 1;
-    if_.esp -= len;
-    memcpy(if_.esp,args[i],len);
-    args[i] = (char*)if_.esp;
+    len = strlen(args[i]) + 1; // must also push the null pointer sentinel for each string 
+    if_.esp -= len; // decrement esp 
+    memcpy(if_.esp,args[i],len); // push the strings onto the stack in reverse order; esp should point to the pushed item
+    args[i] = (char*)if_.esp; // save the addresses of the strings (for checking/debugging purposes
   }
-
+/*
   printf("args: \n");
   for(i = 0; i < num_args; i++) {
     printf("args[%d]: %p\n",i,args[i]);
   }
-
+*/
   //align to 4
-  if_.esp -= (_esp - if_.esp)%4;
+  if_.esp -= (_esp - if_.esp)%4; 
 
   if_.esp -= sizeof(char*) * (num_args + 1);
-  memcpy(if_.esp, args, sizeof(char*) * (num_args + 1));
-  _esp = if_.esp;
+  memcpy(if_.esp, args, sizeof(char*) * (num_args + 1)); // push the array contents, including the null index 
+  _esp = if_.esp; // esp points to argv at this point
 
   if_.esp -= sizeof(char**);
-  memcpy(if_.esp, _esp, sizeof(char**));
+  memcpy(if_.esp, _esp, sizeof(char**)); // push argv
   if_.esp -= sizeof(int);
-  memcpy(if_.esp, &num_args, sizeof(int));
+  memcpy(if_.esp, &num_args, sizeof(int)); // push argc
   if_.esp -= sizeof(void*);
   int voidp = 0;
-  memcpy(if_.esp, &voidp, sizeof(void*));
+  memcpy(if_.esp, &voidp, sizeof(void*)); // push the return address
 
-  palloc_free_page (parsed_filename);
-  printf("finished loading\n");
+  palloc_free_page(parsed_filename);
+  hex_dump(0, if_.esp, PHYS_BASE - if_.esp, true);  
+  
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its

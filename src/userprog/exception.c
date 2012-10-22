@@ -156,6 +156,10 @@ page_fault (struct intr_frame *f)
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
-  kill (f);
+
+  kill(f);
+     
+  palloc_free_page(palloc_get_page(&fault_addr)); // free the page that causes the page fault
 }
+
 

@@ -28,10 +28,11 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
+  printf("blah"); 
   char *fn_copy;
   tid_t tid;
-  //char *name_ptr;
-  //char *name; 
+  char *name_ptr;
+  char *name; 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0); // get some random page at address 0?
@@ -39,9 +40,9 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
   
-  //name = strtok_r(file_name, " ", &name_ptr);
+  name = strtok_r(file_name, " ", &name_ptr);
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT+1, start_process, fn_copy);
+  tid = thread_create (name, PRI_DEFAULT+1, start_process, fn_copy);
 
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
@@ -54,6 +55,7 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
+  printf("nyeh");
   char *file_name = file_name_;
   char *parsed_filename;
   char *save_ptr;

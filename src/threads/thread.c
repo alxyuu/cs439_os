@@ -512,6 +512,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->original_priority = -1;
   t->waiting = NULL;
   list_push_back (&all_list, &t->allelem);
+  sema_init(&t->loaded, 0);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -644,4 +645,5 @@ struct thread* thread_get_by_id(tid_t tid) {
         return t;
       }
     }
+  return NULL; 
 }

@@ -104,7 +104,8 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 #endif
-
+    struct semaphore loaded; // used to sync the loading in exec()
+    int load_status;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
 

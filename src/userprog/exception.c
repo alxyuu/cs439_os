@@ -159,7 +159,7 @@ page_fault (struct intr_frame *f)
 
   kill(f);
      
-  palloc_free_page(palloc_get_page(&fault_addr)); // free the page that causes the page fault
+ // palloc_free_page(palloc_get_page(&fault_addr)); // free the page that causes the page fault
 }
 
 

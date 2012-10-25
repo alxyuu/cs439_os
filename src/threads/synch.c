@@ -414,10 +414,10 @@ bool lock_donate_priority(struct lock *lock, int priority) {
   return 0;
 }
 
-static bool lock_priority_cmp(const struct list_elem *a, const struct list_elem *b, void *aux) {
+static bool lock_priority_cmp(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
   return list_entry(a,struct lock,elem)->priority < list_entry(b,struct lock,elem)->priority;
 }
 
-static bool cond_priority_cmp(const struct list_elem *a, const struct list_elem *b, void *aux) {
+static bool cond_priority_cmp(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
   return list_entry(a,struct semaphore_elem,elem)->t->priority > list_entry(b,struct semaphore_elem,elem)->t->priority;
 }

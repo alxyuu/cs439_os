@@ -206,6 +206,8 @@ thread_create (const char *name, int priority,
 
   intr_set_level (old_level);
 
+  sema_init(&t->loaded, 0);
+  sema_init(&t->exit, 0);
   /* Add to run queue. */
   thread_unblock (t);
   if( !intr_context() && t->priority > thread_current()->priority ) {
@@ -315,6 +317,7 @@ thread_exit (void)
      when it calls thread_schedule_tail(). */
   intr_disable ();
   list_remove (&thread_current()->allelem);
+  sema_up(&thread_current()->exit);
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -512,7 +515,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->original_priority = -1;
   t->waiting = NULL;
   list_push_back (&all_list, &t->allelem);
-  sema_init(&t->loaded, 0);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

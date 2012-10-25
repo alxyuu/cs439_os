@@ -87,13 +87,13 @@ struct thread
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
+//    char processname[128];
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-
     struct list_elem sleepelem;         /* List element for sleeping threads */
 
     struct semaphore sema;              /* Semaphore to track signal sleep wakeup */
@@ -104,8 +104,9 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 #endif
-    struct semaphore *loaded; // used to sync the loading in exec()
+    struct semaphore loaded; // used to sync the loading in exec()
     int load_status;
+    struct semaphore exit;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
 

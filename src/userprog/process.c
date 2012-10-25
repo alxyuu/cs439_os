@@ -27,8 +27,7 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
 process_execute (const char *file_name) 
-{
-  printf("blah"); 
+{ 
   char *fn_copy;
   tid_t tid;
   char *name_ptr;
@@ -40,9 +39,9 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
   
-  name = strtok_r(file_name, " ", &name_ptr);
+  name = strtok_r((char*)file_name, " ", &name_ptr);
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (name, PRI_DEFAULT+1, start_process, fn_copy);
+  tid = thread_create (name, PRI_DEFAULT, start_process, fn_copy);
 
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
@@ -55,7 +54,7 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-  printf("nyeh");
+  struct thread *t;
   char *file_name = file_name_;
   char *parsed_filename;
   char *save_ptr;
@@ -72,6 +71,8 @@ start_process (void *file_name_)
   }
   args[num_args] = 0;
   parsed_filename = args[0]; // save the filename
+  t = thread_current();
+//  memcpy(t->processname, parsed_filename, strlen(parsed_filename)+1);
 
   struct intr_frame if_; // contains esp
   bool success;
@@ -85,11 +86,12 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   if (!success) {
+    sema_up(&t->loaded);
     printf("failed to load\n");
     thread_exit ();
   }
 
-  void* _esp = if_.esp; // wait, is esp originally at PHYS_BASE?
+  void* _esp = if_.esp;
   int len;
 
   for(i = num_args-1; i >= 0; i--) {
@@ -98,21 +100,23 @@ start_process (void *file_name_)
     memcpy(if_.esp,args[i],len); // push the strings onto the stack in reverse order; esp should point to the pushed item
     args[i] = (char*)if_.esp; // save the addresses of the strings (for checking/debugging purposes
   }
-/*
-  printf("args: \n");
-  for(i = 0; i < num_args; i++) {
-    printf("args[%d]: %p\n",i,args[i]);
-  }
-*/
+
+//  printf("args: %p\n",args);
+//  for(i = 0; i < num_args; i++) {
+//    printf("args[%d]: %p\n",i,args[i]);
+//  }
+
   //align to 4
   if_.esp -= (_esp - if_.esp)%4; 
 
   if_.esp -= sizeof(char*) * (num_args + 1);
   memcpy(if_.esp, args, sizeof(char*) * (num_args + 1)); // push the array contents, including the null index 
   _esp = if_.esp; // esp points to argv at this point
+  
 
   if_.esp -= sizeof(char**);
-  memcpy(if_.esp, _esp, sizeof(char**)); // push argv
+  memcpy(if_.esp, &_esp, sizeof(char**)); // push argv
+//  printf("argv: %p\n",_esp);
   if_.esp -= sizeof(int);
   memcpy(if_.esp, &num_args, sizeof(int)); // push argc
   if_.esp -= sizeof(void*);
@@ -120,8 +124,9 @@ start_process (void *file_name_)
   memcpy(if_.esp, &voidp, sizeof(void*)); // push the return address
 
   palloc_free_page(parsed_filename);
-  hex_dump(0, if_.esp, PHYS_BASE - if_.esp, true);  
-  
+//  hex_dump(0, if_.esp, PHYS_BASE - if_.esp, true);  
+  sema_up(&t->loaded);
+
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -144,6 +149,10 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  struct thread *t = thread_get_by_id(child_tid);
+  if( t != NULL ) {
+    sema_down(&t->exit);
+  }
   return -1;
 }
 

@@ -9,19 +9,22 @@
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
 #include "userprog/exception.h"
+#include "devices/shutdown.h"
+#include "devices/input.h"
+#include "threads/interrupt.h"
+#include <list.h>
 
 static int statuses[128];
 static struct file *fds[128];
 struct file *file;
 int x;
 
-static int get_next_fd();
+static int get_next_fd(void);
 static void syscall_handler (struct intr_frame *); // declaration of function that will be implemented
 
 void
 syscall_init (void) 
 {
-  //hash_init(&statuses, status_hash, status_less_than, NULL); 
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   int i;
   for(i = 2; i < 128; i++) {
@@ -32,25 +35,28 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 { 
-  debug_backtrace_all();
-  printf ("system call!\n");
-  printf("current thread %d\n", thread_current()->tid); 
-/* may want to use a switch table to decide which system call to execute
-   may also want to fetch the arguments from f's stack and put them in a list  
-*/
-  switch (*(int*)(f->esp)) {
+//  debug_backtrace_all();
+//  printf ("system call!\n");
 
+  switch (*(int*)(f->esp)) {
     case SYS_HALT: {
+      printf("SYS_HALT\n");
       shutdown_power_off();
       break;
     }
     case SYS_EXIT: { 
+//      printf("SYS_EXIT\n");
+      struct thread *t = thread_current();
       int status = *(int*)(f->esp + 4); 
-      statuses[thread_current()->tid] = status;
-  //    kill(f);
+      statuses[t->tid] = status;
+      printf("%s: exit(%d)\n",t->name, status);
+      //printf("up %p from thread %d:%p (%s)\n",&t->exit,t->tid,t,t->name);
+      thread_exit();  
       break;
     } 
     case SYS_EXEC: {
+//      printf("SYS_EXEC\n");
+
       const char *cmd_line = *(char**)(f->esp + 4);
   //    if (!(is_user_vaddr(cmd_line)))
    //     page_fault(); 
@@ -58,8 +64,8 @@ syscall_handler (struct intr_frame *f UNUSED)
       struct thread *thread = thread_get_by_id(t);
       if (thread == NULL)
         f->eax = -1;
-      else { 
-        sema_down(thread->loaded);
+      else {
+        sema_down(&thread->loaded);
         if(!thread->load_status)
           f->eax = -1;
         else
@@ -67,7 +73,10 @@ syscall_handler (struct intr_frame *f UNUSED)
       }
       break; 
     }
+
     case SYS_WAIT: {
+      int pid = *(int*)(f->esp+4);
+      process_wait(pid);
       break;
     }
     case SYS_CREATE: {
@@ -121,16 +130,18 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
     } 
     case SYS_WRITE: {
+//      printf("SYS_WRITE\n");
+      
       int fd = *(int *)(f->esp + 4);
       char *buffer = *(char**)(f->esp + 8);
+      
       off_t size = *(int*)(f->esp + 12);
-      if(fd == 1) {
-        for (x = 0 ; x < size; x++) 
-          input_putc(buffer[x]);
+      if(fd == 1) { // write to the console; must write all of the text from buffer 
+        putbuf(buffer, size);
         f->eax = size;
+      } else {
+         f->eax = (int)file_write(fds[fd], buffer, size);
       }
-      else 
-        f->eax = (int)file_write(fds[fd], buffer, size);
       break;
     }
     case SYS_SEEK: {
@@ -150,10 +161,12 @@ syscall_handler (struct intr_frame *f UNUSED)
       fds[fd] = NULL; 
       break;
     }
-    default: {     	  	 
+/*    default: {     	  	 
 //  thread_exit ();
     }
+*/
   }
+
 }
 
 static int get_next_fd() {
@@ -161,7 +174,7 @@ static int get_next_fd() {
   for(j = 2; j < 128; j++) {
     if(fds[j] == NULL)
       return j;
-  return NULL;
   }
+  return -1; // free index not found
 }
 

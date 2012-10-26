@@ -8,6 +8,7 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -31,15 +32,17 @@ process_execute (const char *file_name)
   char *fn_copy;
   tid_t tid;
   char *name_ptr;
-  char *name; 
+  char *name;
+  char namecpy[128];
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0); // get some random page at address 0?
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
-  
-  name = strtok_r((char*)file_name, " ", &name_ptr);
+
+  memcpy(namecpy,file_name,strlen(file_name)+1);
+  name = strtok_r(namecpy, " ", &name_ptr);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (name, PRI_DEFAULT, start_process, fn_copy);
 
@@ -86,8 +89,14 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   if (!success) {
+    t->load_status = 0;
     sema_up(&t->loaded);
-    printf("failed to load\n");
+    statuses[t->tid] = -1;
+    sema_up(&t->exit);
+    //printf("failed to load\n");
+    thread_yield();
+    //printf("%s: exit(-1)\n",parsed_filename);
+    palloc_free_page(parsed_filename);
     thread_exit ();
   }
 
@@ -153,7 +162,9 @@ process_wait (tid_t child_tid UNUSED)
   if( t != NULL ) {
     sema_down(&t->exit);
   }
-  return -1;
+  int ret = statuses[child_tid];
+  statuses[child_tid] = -1;
+  return ret;
 }
 
 /* Free the current process's resources. */

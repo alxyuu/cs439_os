@@ -206,6 +206,7 @@ thread_create (const char *name, int priority,
 
   intr_set_level (old_level);
 
+  t->load_status = 0;
   sema_init(&t->loaded, 0);
   sema_init(&t->exit, 0);
   /* Add to run queue. */

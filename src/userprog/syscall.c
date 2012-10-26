@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <debug.h>
 #include <syscall-nr.h>
-#include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
@@ -13,14 +12,13 @@
 #include "devices/input.h"
 #include "threads/interrupt.h"
 #include <list.h>
+#include "threads/palloc.h"
 
-static int statuses[128];
 static struct file *fds[128];
 struct file *file;
 int x;
 
 static int get_next_fd(void);
-static void syscall_handler (struct intr_frame *); // declaration of function that will be implemented
 
 void
 syscall_init (void) 
@@ -32,137 +30,283 @@ syscall_init (void)
   }
 }
 
-static void
-syscall_handler (struct intr_frame *f UNUSED) 
-{ 
-//  debug_backtrace_all();
-//  printf ("system call!\n");
+bool is_valid_addr(void *p) {
+  //printf("testing %p\n", p);
+  return p != NULL && is_user_vaddr(p) && pagedir_get_page(thread_current()->pagedir, p) != NULL;
+}
 
-  switch (*(int*)(f->esp)) {
+static bool is_valid_str(char *p) {
+  if( p == NULL ) return false;
+  while(*p) {
+    if (!is_valid_addr(p))
+      return false;
+    p++;
+  }
+  return true;
+}
+
+void
+syscall_handler (struct intr_frame *f) 
+{ 
+//  printf("sys call\n");
+  //printf("esp value: %p\n", *(f->esp); 
+  int sys_num;
+  int error = 0;
+  if(!is_valid_addr(f->esp)) {
+    sys_num = SYS_EXIT;
+    error = -1;
+  } else {
+    sys_num = *(int*)(f->esp);
+  }
+
+  switch (sys_num) {
     case SYS_HALT: {
-      printf("SYS_HALT\n");
+//      printf("SYS_HALT\n");
       shutdown_power_off();
       break;
     }
-    case SYS_EXIT: { 
-//      printf("SYS_EXIT\n");
-      struct thread *t = thread_current();
-      int status = *(int*)(f->esp + 4); 
-      statuses[t->tid] = status;
-      printf("%s: exit(%d)\n",t->name, status);
-      //printf("up %p from thread %d:%p (%s)\n",&t->exit,t->tid,t,t->name);
-      thread_exit();  
-      break;
-    } 
     case SYS_EXEC: {
 //      printf("SYS_EXEC\n");
-
-      const char *cmd_line = *(char**)(f->esp + 4);
-  //    if (!(is_user_vaddr(cmd_line)))
-   //     page_fault(); 
-      tid_t t = process_execute(cmd_line);
-      struct thread *thread = thread_get_by_id(t);
-      if (thread == NULL)
-        f->eax = -1;
-      else {
-        sema_down(&thread->loaded);
-        if(!thread->load_status)
+      if(!is_valid_addr(f->esp + 4)) {
+        sys_num = SYS_EXIT;
+        error = -1;
+      } else {
+        const char *cmd_line = *(char**)(f->esp + 4);
+        if(!is_valid_str(cmd_line)) {
+          error = -1;
+          goto exit;
+        }
+        tid_t t = process_execute(cmd_line);
+        struct thread *thread = thread_get_by_id(t);
+        if (thread == NULL)
           f->eax = -1;
-        else
-          f->eax = (uint32_t)t; 
+        else {
+          sema_down(&thread->loaded);
+          if(!thread->load_status) {
+            f->eax = -1;
+          } else {
+            f->eax = (uint32_t)t; 
+          }
+        }
+        break;
       }
-      break; 
     }
 
     case SYS_WAIT: {
-      int pid = *(int*)(f->esp+4);
-      process_wait(pid);
-      break;
+//      printf("SYS_WAIT\n");
+      if(!is_valid_addr(f->esp + 4)) {
+        sys_num = SYS_EXIT;
+        error = -1;
+      } else {
+        int pid = *(int*)(f->esp+4);
+        int ret = process_wait(pid);
+        f->eax = ret;
+        break;
+      }
     }
     case SYS_CREATE: {
-      const char *file = *(char**)(f->esp + 4);
-      unsigned size = *(unsigned*)(f->esp + 8);
-      bool created = filesys_create(file, size);
-      if(created)
-        f->eax = 1;
-      else
-        f->eax = 0;
-      break;
+//      printf("SYS_CREATE\n");
+      if(!is_valid_addr(f->esp + 4) || !is_valid_addr(f->esp+8)) {
+        sys_num = SYS_EXIT;
+        error = -1;
+ //       printf("invalid addr\n");
+      } else {
+        const char *file = *(char**)(f->esp + 4);
+        unsigned size = *(unsigned*)(f->esp + 8);
+   //     printf("testing string\n");
+        if(!is_valid_str(file)) {
+    //      printf("invalid string\n");
+          error = -1;
+          goto exit;
+        }
+        bool created = filesys_create(file, size);
+        if(created)
+          f->eax = 1;
+        else
+          f->eax = 0;
+        break;
+      }
     } 
     case SYS_REMOVE: {
-      const char *file = *(char**)(f->esp + 4);
-      bool removed = filesys_remove(file);
-      if(removed)
-        f->eax = 1;
-      else
-        f->eax = 0;
-      break;
+//      printf("SYS_REMOVE\n");
+      if(!is_valid_addr(f->esp + 4)) {
+        sys_num = SYS_EXIT;
+        error = -1;
+      } else {
+        const char *file = *(char**)(f->esp + 4);
+        if(!is_valid_str(file)) {
+          error = -1;
+          goto exit;
+        }
+        bool removed = filesys_remove(file);
+        if(removed)
+          f->eax = 1;
+        else
+          f->eax = 0;
+        break;
+      }
     }
     case SYS_OPEN: {
-      const char *filename = *(char**)(f->esp + 4);
-      int fd = get_next_fd();
-      file = filesys_open(filename);
-      if (file == NULL)
-         f->eax = -1;
-      else {
-         fds[fd] = file;
-         f->eax = fd;
+//      printf("SYS_OPEN\n");
+      if(!is_valid_addr(f->esp + 4)) {
+        sys_num = SYS_EXIT;
+        error = -1;
+      } else {
+        const char *filename = *(char**)(f->esp + 4);
+        if(!is_valid_str(filename)) {
+          error = -1;
+          goto exit;
+        }
+        int fd = get_next_fd();
+        file = filesys_open(filename);
+        if (file == NULL)
+           f->eax = -1;
+        else {
+           fds[fd] = file;
+           f->eax = fd;
+        }
+        break;
       }
-      break;
     }
-    case SYS_FILESIZE: { 
-      int fd = *(int *)(f->esp + 4);
-      f->eax = (int)file_length(fds[fd]); 
-      break; 
+    case SYS_FILESIZE: {
+//      printf("SYS_FILESIZE\n");
+      if(!is_valid_addr(f->esp + 4)) {
+        sys_num = SYS_EXIT;
+        error = -1;
+      } else {
+        int fd = *(int *)(f->esp + 4);
+        if(fds[fd] == NULL) {
+          error = -1;
+          goto exit;
+        }
+        f->eax = (int)file_length(fds[fd]); 
+        break; 
+      }
     } 
     case SYS_READ: {
-      int fd = *(int *)(f->esp + 4);
-      char *buffer = *(char**)(f->esp + 8); 
-      off_t size = *(int*)(f->esp + 12); 
-      if(!fd){ // keyboard input
-        for (x=0; x<size; x++) {
-          buffer[x] = input_getc();
+//      printf("SYS_READ\n");
+      if(!is_valid_addr(f->esp + 4) || !is_valid_addr(f->esp + 8) || !is_valid_addr(f->esp + 12)) {
+        sys_num = SYS_EXIT;
+        error = -1;
+      } else {
+        int fd = *(int *)(f->esp + 4);
+        char *buffer = *(char**)(f->esp + 8); 
+        off_t size = *(int*)(f->esp + 12);
+        if(!is_valid_addr(buffer)) {
+          error = -1;
+          goto exit;
         }
-        f->eax = size;
+        if(!fd){ // keyboard input
+          for (x=0; x<size; x++) {
+            buffer[x] = input_getc();
+          }
+          f->eax = size;
+        } else {
+          if(fds[fd] == NULL) {
+            error = -1;
+            goto exit;
+          }
+          f->eax = (int)file_read(fds[fd], (void*)buffer, size);
+        }
+        break;
       }
-      else
-        f->eax = (int)file_read(fds[fd], (void*)buffer, size);
-      break;
     } 
     case SYS_WRITE: {
 //      printf("SYS_WRITE\n");
-      
-      int fd = *(int *)(f->esp + 4);
-      char *buffer = *(char**)(f->esp + 8);
-      
-      off_t size = *(int*)(f->esp + 12);
-      if(fd == 1) { // write to the console; must write all of the text from buffer 
-        putbuf(buffer, size);
-        f->eax = size;
+      if(!is_valid_addr(f->esp + 4) || !is_valid_addr(f->esp + 8) || !is_valid_addr(f->esp + 12)) {
+        sys_num = SYS_EXIT;
+        error = -1;
       } else {
-         f->eax = (int)file_write(fds[fd], buffer, size);
+        int fd = *(int *)(f->esp + 4);
+        char *buffer = *(char**)(f->esp + 8);
+        off_t size = *(int*)(f->esp + 12);
+        int i;
+        for(i = 0; i < size; i++) {
+          if(!is_valid_addr(buffer+i)) {
+            error = -1;
+            goto exit;
+          }
+        }
+        if(fd == 1) { // write to the console; must write all of the text from buffer 
+          putbuf(buffer, size);
+          f->eax = size;
+        } else {
+           if(fds[fd] == NULL) {
+              error = -1;
+              goto exit;
+            }
+           f->eax = (int)file_write(fds[fd], buffer, size);
+        }
+        break;
       }
-      break;
     }
     case SYS_SEEK: {
-      int fd = *(int*)(f->esp + 4);
-      off_t size = *(int*)(f->esp + 8);
-      file_seek(fds[fd], size); 
-      break;
+ //     printf("SYS_SEEK\n");
+      if(!is_valid_addr(f->esp + 4) || !is_valid_addr(f->esp + 8)) {
+        sys_num = SYS_EXIT;
+        error = -1;
+      } else {
+        int fd = *(int*)(f->esp + 4);
+        off_t size = *(int*)(f->esp + 8);
+        if(fds[fd] == NULL) {
+          error = -1;
+          goto exit;
+        }
+        file_seek(fds[fd], size); 
+        break;
+      }
     }
     case SYS_TELL: {
-      int fd = *(int*)(f->esp + 4);
-      f->eax = (int)file_tell(fds[fd]); 
-      break;
+ //     printf("SYS_TELL\n");
+      if(!is_valid_addr(f->esp + 4)) {
+        sys_num = SYS_EXIT;
+        error = -1;
+      } else {
+        int fd = *(int*)(f->esp + 4);
+        if(fds[fd] == NULL) {
+          error = -1;
+          goto exit;
+        }
+        f->eax = (int)file_tell(fds[fd]); 
+        break;
+      }
     }
     case SYS_CLOSE: {
-      int fd = *(int*)(f->esp + 4);
-      file_close(fds[fd]);
-      fds[fd] = NULL; 
-      break;
+//      printf("SYS_CLOSE\n");
+      if(!is_valid_addr(f->esp + 4)) {
+        sys_num = SYS_EXIT;
+        error = -1;
+      } else {
+        int fd = *(int*)(f->esp + 4);
+        if(fds[fd] == NULL) {
+          error = -1;
+          goto exit;
+        }
+        file_close(fds[fd]);
+        fds[fd] = NULL; 
+        break;
+      }
     }
-/*    default: {     	  	 
-//  thread_exit ();
+    case SYS_EXIT: {
+      exit:
+//      printf("SYS_EXIT\n");
+      if(error || !is_valid_addr(f->esp + 4)) {
+        error = -1;
+      }
+      struct thread *t = thread_current();
+      int status;
+      if (error) {
+        status = -1;
+      } else {
+        status = *(int*)(f->esp + 4); 
+      }
+      statuses[t->tid] = status;
+      printf("%s: exit(%d)\n",t->name, status);
+      thread_exit();  
+      break;
+    } 
+ /*   default: {  // should handle bad esp values    	  	 
+    thread_exit ();
     }
 */
   }

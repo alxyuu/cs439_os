@@ -206,6 +206,10 @@ thread_create (const char *name, int priority,
 
   intr_set_level (old_level);
 
+  int i;
+  for(i = 0; i < 16; i++) {
+    t->fds[i] = NULL;
+  }
   t->load_status = 0;
   sema_init(&t->loaded, 0);
   sema_init(&t->exit, 0);

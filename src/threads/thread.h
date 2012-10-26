@@ -114,6 +114,8 @@ struct thread
 
     struct list locklist;               /* List of locks held by this thread */
     struct lock *waiting;               /* Lock on which this thread is waiting */
+    struct file *fds[16];
+    struct file *exec;
   };
 
 /* If false (default), use round-robin scheduler.

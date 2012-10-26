@@ -119,7 +119,7 @@ start_process (void *file_name_)
   if_.esp -= (_esp - if_.esp)%4; 
 
   if_.esp -= sizeof(char*) * (num_args + 1);
-  memcpy(if_.esp, args, sizeof(char*) * (num_args + 1)); // push the array contents, including the null index 
+  memcpy(if_.esp, args, sizeof(char*) * (num_args + 1)); // push the addresses of the strings, including the null index 
   _esp = if_.esp; // esp points to argv at this point
   
 
@@ -132,8 +132,11 @@ start_process (void *file_name_)
   int voidp = 0;
   memcpy(if_.esp, &voidp, sizeof(void*)); // push the return address
 
+  t->exec = filesys_open(parsed_filename);
+  file_deny_write(t->exec);
   palloc_free_page(parsed_filename);
 //  hex_dump(0, if_.esp, PHYS_BASE - if_.esp, true);  
+  t->load_status = 1;
   sema_up(&t->loaded);
 
   /* Start the user process by simulating a return from an
@@ -160,6 +163,7 @@ process_wait (tid_t child_tid UNUSED)
 {
   struct thread *t = thread_get_by_id(child_tid);
   if( t != NULL ) {
+//    while(!sema_try_down(&t->exit)){}
     sema_down(&t->exit);
   }
   int ret = statuses[child_tid];
@@ -390,7 +394,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Set up stack. */
   if (!setup_stack (esp)) {
-    printf("load: unable to setup stack\n");
+//    printf("load: unable to setup stack\n");
     goto done;
   }
 

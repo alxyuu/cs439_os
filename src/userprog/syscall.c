@@ -14,7 +14,6 @@
 #include <list.h>
 #include "threads/palloc.h"
 
-static struct file *fds[128];
 struct file *file;
 int x;
 
@@ -24,10 +23,6 @@ void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  int i;
-  for(i = 2; i < 128; i++) {
-    fds[i] = NULL;
-  }
 }
 
 bool is_valid_addr(void *p) {
@@ -61,7 +56,7 @@ syscall_handler (struct intr_frame *f)
 
   switch (sys_num) {
     case SYS_HALT: {
-//      printf("SYS_HALT\n");
+//     printf("SYS_HALT\n");
       shutdown_power_off();
       break;
     }
@@ -78,9 +73,9 @@ syscall_handler (struct intr_frame *f)
         }
         tid_t t = process_execute(cmd_line);
         struct thread *thread = thread_get_by_id(t);
-        if (thread == NULL)
+        if (thread == NULL) {
           f->eax = -1;
-        else {
+        } else {
           sema_down(&thread->loaded);
           if(!thread->load_status) {
             f->eax = -1;
@@ -162,7 +157,7 @@ syscall_handler (struct intr_frame *f)
         if (file == NULL)
            f->eax = -1;
         else {
-           fds[fd] = file;
+           thread_current()->fds[fd] = file;
            f->eax = fd;
         }
         break;
@@ -175,11 +170,12 @@ syscall_handler (struct intr_frame *f)
         error = -1;
       } else {
         int fd = *(int *)(f->esp + 4);
-        if(fds[fd] == NULL) {
+        struct thread *t = thread_current();
+        if(t->fds[fd] == NULL) {
           error = -1;
           goto exit;
         }
-        f->eax = (int)file_length(fds[fd]); 
+        f->eax = (int)file_length(t->fds[fd]); 
         break; 
       }
     } 
@@ -192,7 +188,7 @@ syscall_handler (struct intr_frame *f)
         int fd = *(int *)(f->esp + 4);
         char *buffer = *(char**)(f->esp + 8); 
         off_t size = *(int*)(f->esp + 12);
-        if(!is_valid_addr(buffer)) {
+        if(!is_valid_addr(buffer)) { 
           error = -1;
           goto exit;
         }
@@ -202,11 +198,11 @@ syscall_handler (struct intr_frame *f)
           }
           f->eax = size;
         } else {
-          if(fds[fd] == NULL) {
+          if(thread_current()->fds[fd] == NULL) {
             error = -1;
             goto exit;
           }
-          f->eax = (int)file_read(fds[fd], (void*)buffer, size);
+          f->eax = (int)file_read(thread_current()->fds[fd], (void*)buffer, size);
         }
         break;
       }
@@ -231,43 +227,43 @@ syscall_handler (struct intr_frame *f)
           putbuf(buffer, size);
           f->eax = size;
         } else {
-           if(fds[fd] == NULL) {
+           if(thread_current()->fds[fd] == NULL) {
               error = -1;
               goto exit;
             }
-           f->eax = (int)file_write(fds[fd], buffer, size);
+           f->eax = (int)file_write(thread_current()->fds[fd], buffer, size);
         }
         break;
       }
     }
     case SYS_SEEK: {
- //     printf("SYS_SEEK\n");
+//      printf("SYS_SEEK\n");
       if(!is_valid_addr(f->esp + 4) || !is_valid_addr(f->esp + 8)) {
         sys_num = SYS_EXIT;
         error = -1;
       } else {
         int fd = *(int*)(f->esp + 4);
         off_t size = *(int*)(f->esp + 8);
-        if(fds[fd] == NULL) {
+        if(thread_current()->fds[fd] == NULL) {
           error = -1;
           goto exit;
         }
-        file_seek(fds[fd], size); 
+        file_seek(thread_current()->fds[fd], size); 
         break;
       }
     }
     case SYS_TELL: {
- //     printf("SYS_TELL\n");
+//      printf("SYS_TELL\n");
       if(!is_valid_addr(f->esp + 4)) {
         sys_num = SYS_EXIT;
         error = -1;
       } else {
         int fd = *(int*)(f->esp + 4);
-        if(fds[fd] == NULL) {
+        if(thread_current()->fds[fd] == NULL) {
           error = -1;
           goto exit;
         }
-        f->eax = (int)file_tell(fds[fd]); 
+        f->eax = (int)file_tell(thread_current()->fds[fd]); 
         break;
       }
     }
@@ -278,12 +274,12 @@ syscall_handler (struct intr_frame *f)
         error = -1;
       } else {
         int fd = *(int*)(f->esp + 4);
-        if(fds[fd] == NULL) {
+        if(thread_current()->fds[fd] == NULL) {
           error = -1;
           goto exit;
         }
-        file_close(fds[fd]);
-        fds[fd] = NULL; 
+        file_close(thread_current()->fds[fd]);
+        thread_current()->fds[fd] = NULL; 
         break;
       }
     }
@@ -300,6 +296,7 @@ syscall_handler (struct intr_frame *f)
       } else {
         status = *(int*)(f->esp + 4); 
       }
+      file_allow_write(t->exec);
       statuses[t->tid] = status;
       printf("%s: exit(%d)\n",t->name, status);
       thread_exit();  
@@ -315,8 +312,8 @@ syscall_handler (struct intr_frame *f)
 
 static int get_next_fd() {
   int j;
-  for(j = 2; j < 128; j++) {
-    if(fds[j] == NULL)
+  for(j = 2; j < 16; j++) {
+    if(thread_current()->fds[j] == NULL)
       return j;
   }
   return -1; // free index not found

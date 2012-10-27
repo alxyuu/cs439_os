@@ -41,7 +41,7 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  memcpy(namecpy,file_name,strlen(file_name)+1);
+  memcpy(namecpy,file_name,strlen(file_name)+1); // copy file_name into an array, since str_tok will modify the parsed string
   name = strtok_r(namecpy, " ", &name_ptr);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (name, PRI_DEFAULT, start_process, fn_copy);
@@ -64,20 +64,17 @@ start_process (void *file_name_)
   char *args[128];
   int num_args = 0;
   int i;
-  /* Create a new thread to execute FILE_NAME. */
-  /* start by parsing *file_name and saving the result into parsed_name */
 
   /* save the arguments into args */
   char *temp;
-  for (temp = strtok_r (file_name, " ", &save_ptr); temp != NULL; temp = strtok_r (NULL, " ", &save_ptr)) { 
+  for (temp = strtok_r(file_name, " ", &save_ptr); temp != NULL; temp = strtok_r(NULL, " ", &save_ptr)) { 
      args[num_args++] = temp;
   }
   args[num_args] = 0;
   parsed_filename = args[0]; // save the filename
   t = thread_current();
-//  memcpy(t->processname, parsed_filename, strlen(parsed_filename)+1);
 
-  struct intr_frame if_; // contains esp
+  struct intr_frame if_; 
   bool success;
 
   /* Initialize interrupt frame and load executable. */
@@ -88,16 +85,15 @@ start_process (void *file_name_)
   success = load (parsed_filename, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
+  /* Increment the semaphores for exec and wait to ensure mutual exclusion among different processes*/
   if (!success) {
     t->load_status = 0;
     sema_up(&t->loaded);
     statuses[t->tid] = -1;
     sema_up(&t->exit);
-    //printf("failed to load\n");
     thread_yield();
-    //printf("%s: exit(-1)\n",parsed_filename);
     palloc_free_page(parsed_filename);
-    thread_exit ();
+    thread_exit();
   }
 
   void* _esp = if_.esp;
@@ -110,32 +106,25 @@ start_process (void *file_name_)
     args[i] = (char*)if_.esp; // save the addresses of the strings (for checking/debugging purposes
   }
 
-//  printf("args: %p\n",args);
-//  for(i = 0; i < num_args; i++) {
-//    printf("args[%d]: %p\n",i,args[i]);
-//  }
-
   //align to 4
   if_.esp -= (_esp - if_.esp)%4; 
 
-  if_.esp -= sizeof(char*) * (num_args + 1);
-  memcpy(if_.esp, args, sizeof(char*) * (num_args + 1)); // push the addresses of the strings, including the null index 
+  if_.esp -= sizeof(char*) * (num_args+1);
+  memcpy(if_.esp, args, sizeof(char*) * (num_args+1)); // push the addresses of the strings, including the null index 
   _esp = if_.esp; // esp points to argv at this point
   
-
   if_.esp -= sizeof(char**);
   memcpy(if_.esp, &_esp, sizeof(char**)); // push argv
-//  printf("argv: %p\n",_esp);
   if_.esp -= sizeof(int);
   memcpy(if_.esp, &num_args, sizeof(int)); // push argc
   if_.esp -= sizeof(void*);
   int voidp = 0;
   memcpy(if_.esp, &voidp, sizeof(void*)); // push the return address
 
+  /* The program will know that this process is currently running, and currently running processes can't allow writes */
   t->exec = filesys_open(parsed_filename);
   file_deny_write(t->exec);
-  palloc_free_page(parsed_filename);
-//  hex_dump(0, if_.esp, PHYS_BASE - if_.esp, true);  
+  palloc_free_page(parsed_filename); 
   t->load_status = 1;
   sema_up(&t->loaded);
 

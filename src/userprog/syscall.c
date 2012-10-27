@@ -25,11 +25,12 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
+/* Makes sure that p is a user-virtual address, non-null, and already mapped into physical memory */
 bool is_valid_addr(void *p) {
-  //printf("testing %p\n", p);
   return p != NULL && is_user_vaddr(p) && pagedir_get_page(thread_current()->pagedir, p) != NULL;
 }
 
+/* Makes sure that string p is valid, based on the same criteria above */
 static bool is_valid_str(char *p) {
   if( p == NULL ) return false;
   while(*p) {
@@ -40,11 +41,10 @@ static bool is_valid_str(char *p) {
   return true;
 }
 
+/* Fetches the syscall number from f's stack pointer, as well as other arguments above it for certain sys calls, then executes the correct system call.  Exits if any bad pointers are accessed*/
 void
 syscall_handler (struct intr_frame *f) 
 { 
-//  printf("sys call\n");
-  //printf("esp value: %p\n", *(f->esp); 
   int sys_num;
   int error = 0;
   if(!is_valid_addr(f->esp)) {
@@ -55,18 +55,17 @@ syscall_handler (struct intr_frame *f)
   }
 
   switch (sys_num) {
+
     case SYS_HALT: {
-//     printf("SYS_HALT\n");
       shutdown_power_off();
       break;
-    }
+    }  
     case SYS_EXEC: {
-//      printf("SYS_EXEC\n");
-      if(!is_valid_addr(f->esp + 4)) {
+      if(!is_valid_addr(f->esp+4)) {
         sys_num = SYS_EXIT;
         error = -1;
       } else {
-        const char *cmd_line = *(char**)(f->esp + 4);
+        const char *cmd_line = *(char**)(f->esp+4);
         if(!is_valid_str(cmd_line)) {
           error = -1;
           goto exit;
@@ -86,10 +85,8 @@ syscall_handler (struct intr_frame *f)
         break;
       }
     }
-
     case SYS_WAIT: {
-//      printf("SYS_WAIT\n");
-      if(!is_valid_addr(f->esp + 4)) {
+      if(!is_valid_addr(f->esp+4)) {
         sys_num = SYS_EXIT;
         error = -1;
       } else {
@@ -100,17 +97,13 @@ syscall_handler (struct intr_frame *f)
       }
     }
     case SYS_CREATE: {
-//      printf("SYS_CREATE\n");
-      if(!is_valid_addr(f->esp + 4) || !is_valid_addr(f->esp+8)) {
+      if(!is_valid_addr(f->esp+4) || !is_valid_addr(f->esp+8)) {
         sys_num = SYS_EXIT;
         error = -1;
- //       printf("invalid addr\n");
       } else {
-        const char *file = *(char**)(f->esp + 4);
-        unsigned size = *(unsigned*)(f->esp + 8);
-   //     printf("testing string\n");
+        const char *file = *(char**)(f->esp+4);
+        unsigned size = *(unsigned*)(f->esp+8);
         if(!is_valid_str(file)) {
-    //      printf("invalid string\n");
           error = -1;
           goto exit;
         }
@@ -123,12 +116,11 @@ syscall_handler (struct intr_frame *f)
       }
     } 
     case SYS_REMOVE: {
-//      printf("SYS_REMOVE\n");
-      if(!is_valid_addr(f->esp + 4)) {
+      if(!is_valid_addr(f->esp+4)) {
         sys_num = SYS_EXIT;
         error = -1;
       } else {
-        const char *file = *(char**)(f->esp + 4);
+        const char *file = *(char**)(f->esp+4);
         if(!is_valid_str(file)) {
           error = -1;
           goto exit;
@@ -142,12 +134,11 @@ syscall_handler (struct intr_frame *f)
       }
     }
     case SYS_OPEN: {
-//      printf("SYS_OPEN\n");
-      if(!is_valid_addr(f->esp + 4)) {
+      if(!is_valid_addr(f->esp+4)) {
         sys_num = SYS_EXIT;
         error = -1;
       } else {
-        const char *filename = *(char**)(f->esp + 4);
+        const char *filename = *(char**)(f->esp+4);
         if(!is_valid_str(filename)) {
           error = -1;
           goto exit;
@@ -164,12 +155,11 @@ syscall_handler (struct intr_frame *f)
       }
     }
     case SYS_FILESIZE: {
-//      printf("SYS_FILESIZE\n");
-      if(!is_valid_addr(f->esp + 4)) {
+      if(!is_valid_addr(f->esp+4)) {
         sys_num = SYS_EXIT;
         error = -1;
       } else {
-        int fd = *(int *)(f->esp + 4);
+        int fd = *(int*)(f->esp+4);
         struct thread *t = thread_current();
         if(t->fds[fd] == NULL) {
           error = -1;
@@ -180,19 +170,18 @@ syscall_handler (struct intr_frame *f)
       }
     } 
     case SYS_READ: {
-//      printf("SYS_READ\n");
-      if(!is_valid_addr(f->esp + 4) || !is_valid_addr(f->esp + 8) || !is_valid_addr(f->esp + 12)) {
+      if(!is_valid_addr(f->esp+4) || !is_valid_addr(f->esp+8) || !is_valid_addr(f->esp+12)) {
         sys_num = SYS_EXIT;
         error = -1;
       } else {
-        int fd = *(int *)(f->esp + 4);
-        char *buffer = *(char**)(f->esp + 8); 
-        off_t size = *(int*)(f->esp + 12);
+        int fd = *(int*)(f->esp+4);
+        char *buffer = *(char**)(f->esp+8); 
+        off_t size = *(int*)(f->esp+12);
         if(!is_valid_addr(buffer)) { 
           error = -1;
           goto exit;
         }
-        if(!fd){ // keyboard input
+        if(!fd) { // keyboard input
           for (x=0; x<size; x++) {
             buffer[x] = input_getc();
           }
@@ -208,14 +197,13 @@ syscall_handler (struct intr_frame *f)
       }
     } 
     case SYS_WRITE: {
-//      printf("SYS_WRITE\n");
-      if(!is_valid_addr(f->esp + 4) || !is_valid_addr(f->esp + 8) || !is_valid_addr(f->esp + 12)) {
+      if(!is_valid_addr(f->esp+4) || !is_valid_addr(f->esp+8) || !is_valid_addr(f->esp+12)) {
         sys_num = SYS_EXIT;
         error = -1;
       } else {
-        int fd = *(int *)(f->esp + 4);
-        char *buffer = *(char**)(f->esp + 8);
-        off_t size = *(int*)(f->esp + 12);
+        int fd = *(int*)(f->esp+4);
+        char *buffer = *(char**)(f->esp+8);
+        off_t size = *(int*)(f->esp+12);
         int i;
         for(i = 0; i < size; i++) {
           if(!is_valid_addr(buffer+i)) {
@@ -237,13 +225,12 @@ syscall_handler (struct intr_frame *f)
       }
     }
     case SYS_SEEK: {
-//      printf("SYS_SEEK\n");
-      if(!is_valid_addr(f->esp + 4) || !is_valid_addr(f->esp + 8)) {
+      if(!is_valid_addr(f->esp+4) || !is_valid_addr(f->esp+8)) {
         sys_num = SYS_EXIT;
         error = -1;
       } else {
-        int fd = *(int*)(f->esp + 4);
-        off_t size = *(int*)(f->esp + 8);
+        int fd = *(int*)(f->esp+4);
+        off_t size = *(int*)(f->esp+8);
         if(thread_current()->fds[fd] == NULL) {
           error = -1;
           goto exit;
@@ -253,12 +240,11 @@ syscall_handler (struct intr_frame *f)
       }
     }
     case SYS_TELL: {
-//      printf("SYS_TELL\n");
-      if(!is_valid_addr(f->esp + 4)) {
+      if(!is_valid_addr(f->esp+4)) {
         sys_num = SYS_EXIT;
         error = -1;
       } else {
-        int fd = *(int*)(f->esp + 4);
+        int fd = *(int*)(f->esp+4);
         if(thread_current()->fds[fd] == NULL) {
           error = -1;
           goto exit;
@@ -268,12 +254,11 @@ syscall_handler (struct intr_frame *f)
       }
     }
     case SYS_CLOSE: {
-//      printf("SYS_CLOSE\n");
-      if(!is_valid_addr(f->esp + 4)) {
+      if(!is_valid_addr(f->esp+4)) {
         sys_num = SYS_EXIT;
         error = -1;
       } else {
-        int fd = *(int*)(f->esp + 4);
+        int fd = *(int*)(f->esp+4);
         if(thread_current()->fds[fd] == NULL) {
           error = -1;
           goto exit;
@@ -285,8 +270,7 @@ syscall_handler (struct intr_frame *f)
     }
     case SYS_EXIT: {
       exit:
-//      printf("SYS_EXIT\n");
-      if(error || !is_valid_addr(f->esp + 4)) {
+      if(error || !is_valid_addr(f->esp+4)) {
         error = -1;
       }
       struct thread *t = thread_current();
@@ -297,17 +281,13 @@ syscall_handler (struct intr_frame *f)
         status = *(int*)(f->esp + 4); 
       }
       file_allow_write(t->exec);
+      file_close(t->exec);
       statuses[t->tid] = status;
       printf("%s: exit(%d)\n",t->name, status);
       thread_exit();  
       break;
     } 
- /*   default: {  // should handle bad esp values    	  	 
-    thread_exit ();
-    }
-*/
   }
-
 }
 
 static int get_next_fd() {

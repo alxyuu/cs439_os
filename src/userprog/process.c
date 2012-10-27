@@ -19,6 +19,10 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+
+#define CMD_LIMIT 1024    /* Size limit of the command line     */
+char cmdstore[CMD_LIMIT]; /* Temporary storage for command line */
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -27,13 +31,12 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
-{ 
+process_execute (const char *file_name)
+{
   char *fn_copy;
   tid_t tid;
   char *name_ptr;
   char *name;
-  char namecpy[128];
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0); // get some random page at address 0?
@@ -41,13 +44,19 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  memcpy(namecpy,file_name,strlen(file_name)+1); // copy file_name into an array, since str_tok will modify the parsed string
-  name = strtok_r(namecpy, " ", &name_ptr);
+  int len = strlen(file_name);
+  if(len >= CMD_LIMIT) {
+    palloc_free_page(fn_copy);
+    return TID_ERROR;
+  }
+
+  memcpy(cmdstore,file_name,len+1); // copy file_name into an array, since str_tok will modify the parsed string
+  name = strtok_r(cmdstore, " ", &name_ptr);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (name, PRI_DEFAULT, start_process, fn_copy);
 
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy);
 
   return tid;
 }
@@ -67,14 +76,14 @@ start_process (void *file_name_)
 
   /* save the arguments into args */
   char *temp;
-  for (temp = strtok_r(file_name, " ", &save_ptr); temp != NULL; temp = strtok_r(NULL, " ", &save_ptr)) { 
+  for (temp = strtok_r(file_name, " ", &save_ptr); temp != NULL; temp = strtok_r(NULL, " ", &save_ptr)) {
      args[num_args++] = temp;
   }
   args[num_args] = 0;
   parsed_filename = args[0]; // save the filename
   t = thread_current();
 
-  struct intr_frame if_; 
+  struct intr_frame if_;
   bool success;
 
   /* Initialize interrupt frame and load executable. */

@@ -59,6 +59,11 @@ palloc_init (size_t user_page_limit)
   init_pool (&kernel_pool, free_start, kernel_pages, "kernel pool");
   init_pool (&user_pool, free_start + kernel_pages * PGSIZE,
              user_pages, "user pool");
+
+  frame_list = bitmap_create_in_buf(FRAME_LIMIT, bitmap_buf, 1024);
+  printf("frame list: %p\n", frame_list);
+  printf("bitmap buf: %p\n", bitmap_buf);
+  ASSERT ( frame_list != NULL );
 }
 
 /* Obtains and returns a group of PAGE_CNT contiguous free pages.

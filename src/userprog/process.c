@@ -25,6 +25,7 @@ char cmdstore[CMD_LIMIT]; /* Temporary storage for command line */
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static void add_to_frame(uint8_t*);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -511,8 +512,21 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      
+      add_to_frame(kpage); 
     }
   return true;
+}
+
+static void add_to_frame(uint8_t* page) {
+  uintptr_t paddr = vtop(page);
+  size_t frame_number = paddr >> PGBITS;
+  printf("frame list: %p\n", frame_list);
+  printf("bitmap buf: %p\n", bitmap_buf);
+  if(frame_list == NULL) {
+    frame_list = bitmap_create(FRAME_LIMIT);
+  }
+  bitmap_set(frame_list, frame_number, true);
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of

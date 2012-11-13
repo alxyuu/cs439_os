@@ -250,6 +250,8 @@ syscall_handler (struct intr_frame *f)
     }
     default:
       exit:
+      printf("exit frame list: %p\n", frame_list);
+      printf("bitmap buf: %p\n", bitmap_buf);
       file_allow_write(t->exec);
       file_close(t->exec);
       statuses[t->tid] = status;

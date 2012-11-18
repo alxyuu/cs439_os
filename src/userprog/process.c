@@ -20,7 +20,6 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "vm/frame.h"
 
 
 #define CMD_LIMIT 1024    /* Size limit of the command line     */

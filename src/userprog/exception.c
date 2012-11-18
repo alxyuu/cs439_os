@@ -158,11 +158,20 @@ page_fault (struct intr_frame *f)
           write ? "writing" : "reading",
           user ? "user" : "kernel");
 */
-  f->esp = NULL;
-  syscall_handler(f);
-  kill(f);
-     
- // palloc_free_page(palloc_get_page(&fault_addr)); // free the page that causes the page fault
+  
+
+//  if (/* fault_addr is an invalid access */) {
+    //palloc_free_page(fault_addr);
+    f->esp = NULL;
+    syscall_handler(f); // process exits with status -1
+    kill(f);
+ // }   
+
+ // else {
+    // locate the faulting address in the supplemental page table
+    // use the corresponding entry to (locate the data that goes in the page)
+ // }
+ 
 }
 
 

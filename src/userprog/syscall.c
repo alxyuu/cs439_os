@@ -62,7 +62,7 @@ syscall_handler (struct intr_frame *f)
       if(!is_valid_addr(f->esp+4)) {
         goto exit;
       } else {
-        const char *cmd_line = *(char**)(f->esp+4);
+        char *cmd_line = *(char**)(f->esp+4);
         if(!is_valid_str(cmd_line)) {
           goto exit;
         }
@@ -95,7 +95,7 @@ syscall_handler (struct intr_frame *f)
       if(!is_valid_addr(f->esp+4) || !is_valid_addr(f->esp+8)) {
         goto exit;
       } else {
-        const char *file = *(char**)(f->esp+4);
+        char *file = *(char**)(f->esp+4);
         unsigned size = *(unsigned*)(f->esp+8);
         if(!is_valid_str(file)) {
           goto exit;
@@ -112,7 +112,7 @@ syscall_handler (struct intr_frame *f)
       if(!is_valid_addr(f->esp+4)) {
         goto exit;
       } else {
-        const char *file = *(char**)(f->esp+4);
+        char *file = *(char**)(f->esp+4);
         if(!is_valid_str(file)) {
           goto exit;
         }
@@ -128,7 +128,7 @@ syscall_handler (struct intr_frame *f)
       if(!is_valid_addr(f->esp+4)) {
         goto exit;
       } else {
-        const char *filename = *(char**)(f->esp+4);
+        char *filename = *(char**)(f->esp+4);
         if(!is_valid_str(filename)) {
           goto exit;
         }
@@ -250,8 +250,6 @@ syscall_handler (struct intr_frame *f)
     }
     default:
       exit:
-      printf("exit frame list: %p\n", frame_list);
-      printf("bitmap buf: %p\n", bitmap_buf);
       file_allow_write(t->exec);
       file_close(t->exec);
       statuses[t->tid] = status;

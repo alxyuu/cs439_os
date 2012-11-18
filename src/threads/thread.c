@@ -20,6 +20,8 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+#define PAGE_LIMIT 2 << 20
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -520,6 +522,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->original_priority = -1;
   t->waiting = NULL;
   list_push_back (&all_list, &t->allelem);
+  //t->sup_table = bitmap_create(PAGE_LIMIT);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

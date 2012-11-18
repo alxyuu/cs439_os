@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "threads/loader.h"
+#include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 
@@ -60,10 +61,9 @@ palloc_init (size_t user_page_limit)
   init_pool (&user_pool, free_start + kernel_pages * PGSIZE,
              user_pages, "user pool");
 
-  frame_list = bitmap_create_in_buf(FRAME_LIMIT, bitmap_buf, 1024);
-  printf("frame list: %p\n", frame_list);
-  printf("bitmap buf: %p\n", bitmap_buf);
-  ASSERT ( frame_list != NULL );
+  lock_init(&frame_lock);
+  list_init(&frame_list);
+  frame_size = 0;
 }
 
 /* Obtains and returns a group of PAGE_CNT contiguous free pages.
@@ -101,7 +101,7 @@ palloc_get_multiple (enum palloc_flags flags, size_t page_cnt)
       if (flags & PAL_ASSERT)
         PANIC ("palloc_get: out of pages");
     }
-
+    
   return pages;
 }
 
@@ -184,4 +184,11 @@ page_from_pool (const struct pool *pool, void *page)
   size_t end_page = start_page + bitmap_size (pool->used_map);
 
   return page_no >= start_page && page_no < end_page;
+}
+void init_frame(struct frame *frame, struct thread *t) // which file typedefs uintptr_t? :S
+{
+  lock_acquire( &frame_lock );
+  frame->placer = t;
+  list_push_back(&frame_list, &frame->elem);
+  lock_release( &frame_lock );
 }

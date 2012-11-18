@@ -1,6 +1,7 @@
 #include "userprog/process.h"
 #include <debug.h>
 #include <inttypes.h>
+#include <list.h>
 #include <round.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,13 +16,16 @@
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/frame.h"
 
 
 #define CMD_LIMIT 1024    /* Size limit of the command line     */
 char cmdstore[CMD_LIMIT]; /* Temporary storage for command line */
+
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -477,7 +481,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 {
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
-  ASSERT (ofs % PGSIZE == 0);
+  ASSERT (ofs % PGSIZE == 0); 
 
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
@@ -488,10 +492,22 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+      lock_acquire( &frame_lock );
+      if(frame_size >= FRAME_LIMIT)
+        //evict_frame();
+        PANIC ("No frame is free!"); // temporary
+      frame_size++;
+      lock_release ( &frame_lock );
+
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
+      // if page not found, page fault
+      if (kpage == NULL) {
+        lock_acquire( &frame_lock );
+        frame_size--;
+        lock_release( &frame_lock );
         return false;
+      }
 
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
@@ -512,21 +528,13 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
-      
-      add_to_frame(kpage); 
-    }
-  return true;
-}
 
-static void add_to_frame(uint8_t* page) {
-  uintptr_t paddr = vtop(page);
-  size_t frame_number = paddr >> PGBITS;
-  printf("frame list: %p\n", frame_list);
-  printf("bitmap buf: %p\n", bitmap_buf);
-  if(frame_list == NULL) {
-    frame_list = bitmap_create(FRAME_LIMIT);
-  }
-  bitmap_set(frame_list, frame_number, true);
+      
+      struct thread *t = thread_current();
+      struct frame *f = (struct frame*) malloc(sizeof (struct frame));
+      init_frame(f, t);
+    } 
+  return true;
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
@@ -541,8 +549,9 @@ setup_stack (void **esp)
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
+      if (success) {
         *esp = PHYS_BASE;
+      }
       else
         palloc_free_page (kpage);
     }

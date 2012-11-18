@@ -2,6 +2,8 @@
 #define THREADS_PALLOC_H
 
 #include <stddef.h>
+#include <list.h>
+#include "threads/synch.h"
 
 /* How to allocate pages. */
 enum palloc_flags
@@ -11,10 +13,29 @@ enum palloc_flags
     PAL_USER = 004              /* User page. */
   };
 
-//#define FRAME_LIMIT (1 << 20)
-#define FRAME_LIMIT (1 << 12)
-static struct bitmap *frame_list;
-static char bitmap_buf[1024];
+#define FRAME_LIMIT 128
+
+struct frame
+{
+  struct thread *placer; // the thread that put this frame into the frame table
+  //uintptr_t addr; // address of this frame.  Should be a physical address in the kernel.  Can't this just be denoted by &frame?
+  struct list_elem elem;
+  //struct page *page; // the page that maps to this frame
+};
+
+struct page
+{
+  bool swapped;
+  bool zeroed;
+  bool readonly;
+  struct frame *frame;
+};
+
+struct lock frame_lock;
+struct list frame_list;
+int frame_size;
+
+void init_frame(struct frame*, struct thread*);
 
 void palloc_init (size_t user_page_limit);
 void *palloc_get_page (enum palloc_flags);

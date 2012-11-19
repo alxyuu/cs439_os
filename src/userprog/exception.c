@@ -160,23 +160,26 @@ page_fault (struct intr_frame *f)
           user ? "user" : "kernel");
 
   struct page* page = get_page(fault_addr);
-  if ( page == NULL ) {
+  if ( page == NULL ) 
+  {
     //palloc_free_page(fault_addr);
     f->esp = NULL;
     syscall_handler(f); // process exits with status -1
-//    kill(f);
-  } else {
+    //    kill(f);
+  } 
+  else {
     // locate the faulting address in the supplemental page table
     // use the corresponding entry to (locate the data that goes in the page)
     lock_acquire( &frame_lock );
     if( frame_size >= FRAME_LIMIT ) {
       evict_frame();
     }
-    frame_size++;
+    frame_size++; // why do we increment frame size here?
     lock_release( &frame_lock );
-//    restore_page( page );
-    add_page_to_frames( page );
-  }
+    restore_page( page ); // update the PTE as valid in memory instead of creating a new page
+    add_page_to_frames( page ); // add a frame page into frame table if a frame page is evicted,
+                                // don't add a VM page into frame
+    }
 }
 
 

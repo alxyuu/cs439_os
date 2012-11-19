@@ -2,9 +2,11 @@
 #define THREADS_THREAD_H
 
 #include <debug.h>
+#include <hash.h>
 #include <list.h>
 #include <stdint.h>
 #include <threads/synch.h>
+#include "threads/palloc.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -118,7 +120,7 @@ struct thread
     struct file *exec;                  // the file that the current process is currently running; tracks if program can write to this process or not
 
     //struct bitmap *sup_table;		// this process's supplemental page table
-
+    struct hash page_table;
   };
 
 /* If false (default), use round-robin scheduler.
@@ -159,4 +161,7 @@ int thread_get_load_avg (void);
 bool priority_cmp(const struct list_elem *, const struct list_elem *, void *);
 
 struct thread* thread_get_by_id(tid_t);
+
+struct page* init_page(void*, bool, bool);
+struct page* get_page(void*);
 #endif /* threads/thread.h */

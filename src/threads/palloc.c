@@ -11,6 +11,8 @@
 #include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/thread.h"
+#include "devices/block.h"
 
 /* Page allocator.  Hands out memory in page-size (or
    page-multiple) chunks.  See malloc.h for an allocator that
@@ -138,6 +140,17 @@ palloc_free_multiple (void *pages, size_t page_cnt)
 
   page_idx = pg_no (pages) - pg_no (pool->base);
 
+  unsigned i;
+  for( i = 0; i < page_cnt; i++) {
+    struct page *p = get_page(pages + ( PGSIZE * i ));
+    if( p != NULL ) {
+      hash_delete( &thread_current()->page_table, &p->entry->elem );
+      free(p->entry);
+      free(p);
+    }
+  }
+
+
 #ifndef NDEBUG
   memset (pages, 0xcc, PGSIZE * page_cnt);
 #endif
@@ -185,10 +198,60 @@ page_from_pool (const struct pool *pool, void *page)
 
   return page_no >= start_page && page_no < end_page;
 }
-void init_frame(struct frame *frame, struct thread *t) // which file typedefs uintptr_t? :S
+
+void add_page_to_frames(struct page *p) // which file typedefs uintptr_t? :S
 {
   lock_acquire( &frame_lock );
-  frame->placer = t;
+  struct frame *frame = (struct frame*) malloc(sizeof (struct frame));
+  frame->placer = thread_current();
+  frame->page = p;
+  p->frame = frame;
+  p->swapped = false;
   list_push_back(&frame_list, &frame->elem);
   lock_release( &frame_lock );
+}
+
+void evict_frame() {
+  ASSERT ( lock_held_by_current_thread(&frame_lock) );
+  ASSERT ( frame_size >= FRAME_LIMIT );
+
+  struct frame *f = list_entry( list_pop_front(&frame_list), struct frame, elem );
+  struct page *p = f->page;
+  void *vaddr = p->entry->vaddr;
+
+  struct block* swap = block_get_role(BLOCK_SWAP);
+  block_sector_t sector = (pg_no(vaddr) - pg_no(PHYS_BASE) ) * 4;
+
+  int i;
+  for( i = 0; i < 4; i++) {
+    block_write(swap, sector + i, vaddr + i * 512);
+  }
+
+  p->swapped = true;
+  p->frame = NULL;
+
+  printf("swapped %p\n", vaddr);
+
+  palloc_free_page(vaddr);
+
+  free(f);
+}
+
+void restore_page( struct page *p ) {
+  ASSERT ( p != NULL );
+  ASSERT ( p->swapped == true );
+
+  // not the same vaddr as the original, wat do
+  void* vaddr = palloc_get_page( PAL_USER );
+
+  struct block* swap = block_get_role(BLOCK_SWAP);
+  block_sector_t sector = ( pg_no(p->entry->vaddr) - pg_no(PHYS_BASE) ) * 4;
+
+  int i;
+  for( i = 0; i < 4; i++ ) {
+    block_read( swap, sector + i, vaddr + i * 512 );
+  }
+
+  p->swapped = false;
+  p->vaddr = vaddr;
 }

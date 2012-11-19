@@ -5,6 +5,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "userprog/syscall.h"
+#include "threads/palloc.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -152,26 +153,30 @@ page_fault (struct intr_frame *f)
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-/*  printf ("Page fault at %p: %s error %s page in %s context.\n",
+  printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
-*/
-  
 
-//  if (/* fault_addr is an invalid access */) {
+  struct page* page = get_page(fault_addr);
+  if ( page == NULL ) {
     //palloc_free_page(fault_addr);
     f->esp = NULL;
     syscall_handler(f); // process exits with status -1
-    kill(f);
- // }   
-
- // else {
+//    kill(f);
+  } else {
     // locate the faulting address in the supplemental page table
     // use the corresponding entry to (locate the data that goes in the page)
- // }
- 
+    lock_acquire( &frame_lock );
+    if( frame_size >= FRAME_LIMIT ) {
+      evict_frame();
+    }
+    frame_size++;
+    lock_release( &frame_lock );
+    restore_page( page );
+    add_page_to_frames( page );
+  }
 }
 
 

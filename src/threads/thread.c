@@ -1,5 +1,6 @@
 #include "threads/thread.h"
 #include <debug.h>
+#include <hash.h>
 #include <stddef.h>
 #include <random.h>
 #include <stdio.h>
@@ -11,6 +12,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -72,6 +74,10 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+
+static unsigned page_hash_func(const struct hash_elem*, void*);
+static bool page_less_func(const struct hash_elem*, const struct hash_elem*, void*);
+
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -215,6 +221,7 @@ thread_create (const char *name, int priority,
   t->load_status = 0;
   sema_init(&t->loaded, 0);
   sema_init(&t->exit, 0);
+  hash_init(&t->page_table, page_hash_func, page_less_func, NULL);
   /* Add to run queue. */
   thread_unblock (t);
   if( !intr_context() && t->priority > thread_current()->priority ) {
@@ -656,4 +663,41 @@ struct thread* thread_get_by_id(tid_t tid) {
       }
     }
   return NULL; 
+}
+
+static unsigned page_hash_func(const struct hash_elem* a, void* aux UNUSED) {
+  return pg_no( hash_entry( a, struct page_entry, elem)->vaddr );
+}
+
+static bool page_less_func(const struct hash_elem* a, const struct hash_elem* b, void* aux UNUSED) {
+  return page_hash_func(a, aux) < page_hash_func(b, aux);
+}
+
+struct page* init_page(void *vaddr, bool readonly, bool zeroed) {
+  struct page *p = (struct page*) malloc(sizeof (struct page));
+  struct page_entry *entry = (struct page_entry*) malloc(sizeof (struct page_entry));
+  p->dirty = true;
+  p->swapped = false;
+  p->readonly = readonly;
+  p->zeroed = zeroed;
+  p->entry = entry;
+  p->entry->page = p;
+  p->entry->vaddr = vaddr;
+  struct hash_elem *elem = hash_insert( &thread_current()->page_table, &entry->elem );
+  ASSERT ( elem == NULL );
+  return p;
+}
+
+struct page* get_page(void *vaddr) {
+  struct page_entry entry;
+  entry.vaddr = vaddr;
+  size_t size = hash_size(&thread_current()->page_table);
+  if ( size > 0 ) {
+    struct hash_elem *entry_in_table = hash_find( &thread_current()->page_table, &entry.elem );
+    if(entry_in_table == NULL) {
+      return NULL;
+    }
+    return hash_entry( entry_in_table, struct page_entry, elem )->page;
+  }
+  return NULL;
 }

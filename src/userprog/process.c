@@ -28,7 +28,6 @@ char cmdstore[CMD_LIMIT]; /* Temporary storage for command line */
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static void add_to_frame(uint8_t*);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -57,7 +56,9 @@ process_execute (const char *file_name)
   memcpy(cmdstore,file_name,len+1); // copy file_name into an array, since str_tok will modify the parsed string
   name = strtok_r(cmdstore, " ", &name_ptr);
   /* Create a new thread to execute FILE_NAME. */
+
   tid = thread_create (name, PRI_DEFAULT, start_process, fn_copy);
+
 
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
@@ -137,7 +138,7 @@ start_process (void *file_name_)
   /* The program will know that this process is currently running, and currently running processes can't allow writes */
   t->exec = filesys_open(parsed_filename);
   file_deny_write(t->exec);
-  palloc_free_page(parsed_filename); 
+  palloc_free_page(parsed_filename);
   t->load_status = 1;
   sema_up(&t->loaded);
 
@@ -493,8 +494,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       lock_acquire( &frame_lock );
       if(frame_size >= FRAME_LIMIT)
-        //evict_frame();
-        PANIC ("No frame is free!"); // temporary
+        evict_frame();
+        //PANIC ("No frame is free!"); // temporary
       frame_size++;
       lock_release ( &frame_lock );
 
@@ -528,11 +529,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
 
-      
-      struct thread *t = thread_current();
-      struct frame *f = (struct frame*) malloc(sizeof (struct frame));
-      init_frame(f, t);
-    } 
+      struct page *p = init_page(kpage, !writable, 0);
+      add_page_to_frames(p);
+    }
   return true;
 }
 

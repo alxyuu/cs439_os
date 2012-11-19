@@ -13,6 +13,7 @@
 #include "threads/interrupt.h"
 #include <list.h>
 #include "threads/palloc.h"
+#include "userprog/process.h"
 
 static int get_next_fd(void);
 

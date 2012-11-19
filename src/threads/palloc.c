@@ -242,13 +242,18 @@ void restore_page( struct page *p ) {
   ASSERT ( p->swapped == true );
 
   // not the same vaddr as the original, wat do
+  // A: Don't get a new page to restore the information, set the reference bit to valid to
+  // indicate that the page is loaded in memory
   void* vaddr = palloc_get_page( PAL_USER );
+
 
   struct block* swap = block_get_role(BLOCK_SWAP);
   block_sector_t sector = ( pg_no(p->entry->vaddr) - pg_no(PHYS_BASE) ) * 4;
 
   int i;
   for( i = 0; i < 4; i++ ) {
+   /*what is the destination of this read from block? We need to load the data from disk/exec file
+	 * into the designated frame page rather than the VM page.*/
     block_read( swap, sector + i, vaddr + i * 512 );
   }
 

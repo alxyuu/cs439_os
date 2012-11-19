@@ -180,6 +180,24 @@ page_fault (struct intr_frame *f)
     add_page_to_frames( page ); // add a frame page into frame table if a frame page is evicted,
                                 // don't add a VM page into frame
     }
+
+/*How page fault handler works? 
+The kernel raises a page fault exception when a process accesses a page that is not in memory. The page fault is serviced as follows:-
+1. The page fault handler first retrieves the address of the faulting page from one of the CPU control registers.
+2. If the page is unmapped, that is, if there’s no data there, or if the page lies within kernel virtual memory, or if the access is an attempt to write to a read-only page, then the access is invalid. Any invalid access terminates the process and thereby frees all of its resources.
+￼￼29
+3. If the memory reference is valid, the frame table entry associated with the page that has faulted is obtained.
+4. The frame table entry is used to locate the data that goes in the page, which might be in the file system, or in a swap slot, or it might simply be an all-zero page, or it might already be swapped into the memory by another process, which shares that page.
+5. If the frame is already present in the memory (swapped in by a process that shares the page), then the frame only needs to be located. Otherwise, a new frame is obtained to store the page. And when all the memory has been exhausted, a frame must be made available by evicting some victim frame, chosen by the eviction algorithm.
+6. Next, the data is fetched into the frame, by
+a. Reading it from the file system or a swap slot if the frame is on the disk.
+b. Zeroing it out if the frame table entry indicates that it is an all-zero page.
+If the frame is already available in memory as a page of another process sharing
+this page, then no action is necessary in this step.
+7. The page table entry (PTE) of the page and all its aliases will be updated to
+indicate that the page and its aliases are now available in memory.
+8. The process is put back into the ready queue, so that it can resume execution from
+the faulting instruction, when it is next scheduled to run.*/
 }
 
 

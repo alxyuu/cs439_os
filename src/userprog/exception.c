@@ -174,7 +174,7 @@ page_fault (struct intr_frame *f)
     }
     frame_size++;
     lock_release( &frame_lock );
-    restore_page( page );
+//    restore_page( page );
     add_page_to_frames( page );
   }
 }

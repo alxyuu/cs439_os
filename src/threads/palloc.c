@@ -230,9 +230,9 @@ void evict_frame() {
   p->swapped = true;
   p->frame = NULL;
 
-  printf("swapped %p\n", vaddr);
+//  printf("swapped %p\n", vaddr);
 
-  palloc_free_page(vaddr);
+//  palloc_free_page(vaddr);
 
   free(f);
 }
@@ -253,5 +253,5 @@ void restore_page( struct page *p ) {
   }
 
   p->swapped = false;
-  p->vaddr = vaddr;
+  p->entry->vaddr = vaddr;
 }

@@ -49,6 +49,7 @@ int frame_size;
 
 void add_page_to_frames(struct page *p);
 void evict_frame(void);
+void restore_page(struct page*);
 
 void palloc_init (size_t user_page_limit);
 void *palloc_get_page (enum palloc_flags);

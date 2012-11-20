@@ -251,8 +251,10 @@ syscall_handler (struct intr_frame *f)
     }
     default:
       exit:
-      file_allow_write(t->exec);
-      file_close(t->exec);
+      if(t->exec != NULL) {
+        file_allow_write(t->exec);
+        file_close(t->exec);
+      }
       statuses[t->tid] = status;
       printf("%s: exit(%d)\n",t->name, status);
       thread_exit();

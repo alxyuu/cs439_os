@@ -14,7 +14,8 @@ enum palloc_flags
     PAL_USER = 004              /* User page. */
   };
 
-#define FRAME_LIMIT 64
+#define FRAME_LIMIT 32
+#define SWAP_LIMIT 1<<13
 
 struct frame
 {
@@ -27,21 +28,22 @@ struct frame
 struct page
 {
   bool swapped;
-  bool zeroed;
   bool readonly;
-  bool dirty;
+  bool zeroed;
+  uint32_t sector;
   struct frame *frame;
   struct page_entry *entry;
 };
 
 struct page_entry
 {
-  void* vaddr;
+  void* upage;
   struct page* page;
   struct hash_elem elem;
 };
 
-//unsigned char swap[1<<20] = {0};
+unsigned char *swap;
+struct lock swap_lock;
 
 struct lock frame_lock;
 struct list frame_list;

@@ -88,8 +88,8 @@ kill (struct intr_frame *f)
     case SEL_UCSEG:
       /* User's code segment, so it's a user exception, as we
          expected.  Kill the user process.  */
-      printf ("%s: dying due to interrupt %#04x (%s).\n",
-              thread_name (), f->vec_no, intr_name (f->vec_no));
+      printf ("%s-%d: dying due to interrupt %#04x (%s).\n",
+              thread_name (), thread_current()->tid, f->vec_no, intr_name (f->vec_no));
       intr_dump_frame (f);
       thread_exit (); 
 
@@ -153,21 +153,24 @@ page_fault (struct intr_frame *f)
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
+/*  printf ("Page fault at %p by thread id:%d: %s error %s page in %s context.\n",
           fault_addr,
+          thread_current()->tid,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
-
+*/
   struct page* page = get_page(fault_addr);
   if ( page == NULL ) 
   {
+//    printf("page not found \n");
     //palloc_free_page(fault_addr);
     f->esp = NULL;
     syscall_handler(f); // process exits with status -1
     //    kill(f);
-  } 
+  }
   else {
+//    printf("page found \n");
     // locate the faulting address in the supplemental page table
     // use the corresponding entry to (locate the data that goes in the page)
     lock_acquire( &frame_lock );
@@ -177,8 +180,6 @@ page_fault (struct intr_frame *f)
     frame_size++; // why do we increment frame size here?
     lock_release( &frame_lock );
     restore_page( page ); // update the PTE as valid in memory instead of creating a new page
-    add_page_to_frames( page ); // add a frame page into frame table if a frame page is evicted,
-                                // don't add a VM page into frame
     }
 
 /*How page fault handler works? 

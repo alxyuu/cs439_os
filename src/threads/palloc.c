@@ -71,11 +71,12 @@ palloc_init (size_t user_page_limit)
   list_init(&frame_list);
   frame_size = 0;
   lock_init(&swap_lock);
-  swap = (unsigned char*)malloc(sizeof(char) * SWAP_LIMIT);
+  swap_map = (unsigned char*)malloc(sizeof(char) * SWAP_LIMIT);
   int i;
   for( i = 0; i < SWAP_LIMIT; i++) {
-    swap[i] = 0;
+    swap_map[i] = 0;
   }
+  swap_pointer = 0;
 }
 
 /* Obtains and returns a group of PAGE_CNT contiguous free pages.
@@ -211,36 +212,44 @@ void add_page_to_frames(struct page *p) // which file typedefs uintptr_t? :S
 }
 
 void evict_frame() {
+//  printf("evicting frame\n");
+  struct frame *f = list_entry( list_pop_front(&frame_list), struct frame, elem );
+  delete_frame(f);
+}
+
+void delete_frame(struct frame *f) {
   ASSERT ( lock_held_by_current_thread(&frame_lock) );
   ASSERT ( frame_size >= FRAME_LIMIT );
 
-  struct frame *f = list_entry( list_pop_front(&frame_list), struct frame, elem );
   struct page *p = f->page;
-  void *upage = p->entry->upage;
+  void *upage = p->upage;
   void *page = pagedir_get_page( f->placer->pagedir, upage );
+  if(p->file == NULL) {
+    struct block* swap = block_get_role(BLOCK_SWAP);
+//    printf("page table index: %u\n", pt_no(page));
+//    printf("page directory index: %u\n", pd_no(page));
+//    printf("thread pagedir: %u\n", pd_no(thread_current()->pagedir));
+    block_sector_t sector = get_swap_sector();
+//    printf("sector: %u\n", sector);
 
-  struct block* swap = block_get_role(BLOCK_SWAP);
-//  printf("page table index: %u\n", pt_no(page));
-//  printf("page directory index: %u\n", pd_no(page));
-//  printf("thread pagedir: %u\n", pd_no(thread_current()->pagedir));
-  block_sector_t sector = get_swap_sector();
-//  printf("sector: %u\n", sector);
-
-  int i;
-  for( i = 0; i < 8; i++) {
-    block_write(swap, sector + i, page + i * 512);
+    int i;
+    for( i = 0; i < 8; i++) {
+      block_write(swap, sector + i, page + i * 512);
+    }
+    p->sector = sector;
   }
 
   p->frame = NULL;
-  p->sector = sector;
 //  printf("uaddr %p swapped to sector %u by thread id: %d\n", upage, sector, f->placer->tid);
 //  unsigned *kvals = (unsigned*)page;
 //  unsigned *uvals = (unsigned*)upage;
 //  printf("kernel: %x %x %x %x\n", *kvals, *(kvals+1), *(kvals+2), *(kvals+3));
   //printf("user: %x %x %x %x\n", *uvals, *(uvals+1), *(uvals+2), *(uvals+3));
-  p->swapped = 1;
+//  p->swapped = 1;
+
 
   pagedir_clear_page( f->placer->pagedir, upage);
+  palloc_free_page( page );
 
   free(f);
   frame_size--;
@@ -249,9 +258,10 @@ void evict_frame() {
 static unsigned get_swap_sector() {
   lock_acquire(&swap_lock);
   unsigned i;
-  for( i = 0; i < (SWAP_LIMIT); i++ ) {
-    if( !swap[i] ) {
-      swap[i] = 1;
+  for( i = swap_pointer; i < (SWAP_LIMIT); i++ ) {
+    if( !swap_map[i] ) {
+      swap_map[i] = 1;
+      swap_pointer++;
       lock_release(&swap_lock);
       return i<<3;
     }
@@ -262,30 +272,53 @@ static unsigned get_swap_sector() {
 
 void restore_page( struct page *p ) {
   ASSERT ( p != NULL );
-  ASSERT ( p->swapped );
 
   uint8_t *kpage = palloc_get_page( PAL_USER );
+//  printf("kpage: %p\n", kpage);
+  printf("restoring page %p\n", p->upage);
 
-  pagedir_set_page( thread_current()->pagedir, p->entry->upage, kpage, !p->readonly);
-  void* page = pagedir_get_page( thread_current()->pagedir, p->entry->upage );
 
-  ASSERT ( page != NULL );
+  ASSERT ( kpage != NULL );
 
-  struct block* swap = block_get_role(BLOCK_SWAP);
-  block_sector_t sector = p->sector;
+  if( p->zeroed ) {
+    printf("restoring zeroed page\n");
+    p->zeroed = false;
+    memset( kpage, 0, PGSIZE );
+  } else if ( p->file != NULL ) {
+    printf("demand paging\n");
+    file_seek(p->file, p->ofs);
+    if (file_read (p->file, kpage, PGSIZE) != (int) PGSIZE) {
+      PANIC("file read size mismatch\n");
+    }
+//    file_close(p->file);
+  } else {
+//    printf("restoring swapped page\n");
+//    ASSERT ( p->swapped );
+    struct block* swap = block_get_role(BLOCK_SWAP);
+    block_sector_t sector = p->sector;
 
-  //printf("thread %d is restoring page uaddr: %p from sector %u\n", thread_current()->tid, p->entry->upage, sector);
-  int i;
-  for( i = 0; i < 8; i++ ) {
-    // what is the destination of this read from block? We need to load the data from disk/exec file
-    // into the designated frame page rather than the VM page.
-    block_read( swap, sector + i, page + i * 512 );
+    //printf("thread %d is restoring page uaddr: %p from sector %u\n", thread_current()->tid, p->entry->upage, sector);
+    int i;
+    for( i = 0; i < 8; i++ ) {
+      // what is the destination of this read from block? We need to load the data from disk/exec file
+      // into the designated frame page rather than the VM page.
+      block_read( swap, sector + i, kpage + i * 512 );
+    }
+    lock_acquire( &swap_lock );
+    unsigned swap_index = sector>>3;
+    swap_map[swap_index] = 0;
+    if(swap_index < swap_pointer) {
+      swap_pointer = swap_index;
+    }
+    lock_release( &swap_lock );
+  //  unsigned *kvals = (unsigned*)kpage;
+  //  unsigned *uvals = (unsigned*)upage;
+  //  printf("kernel: %x %x %x %x\n", *kvals, *(kvals+1), *(kvals+2), *(kvals+3));
+  //  printf("user: %x %x %x %x\n", *uvals, *(uvals+1), *(uvals+2), *(uvals+3));
   }
-//  unsigned *kvals = (unsigned*)page;
-//  unsigned *uvals = (unsigned*)upage;
-//  printf("kernel: %x %x %x %x\n", *kvals, *(kvals+1), *(kvals+2), *(kvals+3));
-//  printf("user: %x %x %x %x\n", *uvals, *(uvals+1), *(uvals+2), *(uvals+3));
 
+  pagedir_set_page( thread_current()->pagedir, p->upage, kpage, !p->readonly);
   add_page_to_frames(p);
+  printf("done restoring\n");
 }
 

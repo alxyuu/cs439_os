@@ -491,6 +491,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+      if( frame_size > 32 && !page_read_bytes ) {
+          init_page(upage, !writable, 1, NULL, 0);
+      } else if( page_read_bytes == PGSIZE ) {
+          init_page(upage, !writable, 0, file, ofs);
+      } else {
       lock_acquire( &frame_lock );
       if(frame_size >= FRAME_LIMIT)
         evict_frame();
@@ -505,6 +510,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         lock_acquire( &frame_lock );
         frame_size--;
         lock_release( &frame_lock );
+        printf("PGSIZE: %d\n", PGSIZE);
+        printf("read bytes: %u\n", page_read_bytes);
+        printf("zero bytes: %u\n", page_zero_bytes);
+	printf("page not found\n");
         return false;
       }
 
@@ -515,6 +524,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           lock_acquire( &frame_lock );
           frame_size--;
           lock_release( &frame_lock );
+          printf("file not read\n");
           return false;
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
@@ -526,12 +536,13 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           lock_acquire( &frame_lock );
           frame_size--;
           lock_release( &frame_lock );
+          printf("unable to install page\n");
           return false;
         }
 
-      struct page *p = init_page(upage, !writable, 0);
+      struct page *p = init_page(upage, !writable, 0, NULL, 0);
       add_page_to_frames(p);
-
+      }
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -545,19 +556,31 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
+  bool success = add_stack();
+  if (success) {
+    *esp = PHYS_BASE;
+  }
+  return success;
+}
+
+bool
+add_stack () {
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
+  struct thread *t = thread_current();
+  if( t->stack_pages < STACK_LIMIT ) {
+    t->stack_pages++;
+    kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+    if (kpage != NULL)
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success) {
-        *esp = PHYS_BASE;
-      }
-      else
+      success = install_page (((uint8_t *) PHYS_BASE) - (t->stack_pages * PGSIZE), kpage, true);
+      if(!success) {
         palloc_free_page (kpage);
+        t->stack_pages--;
+      }
     }
+  }
   return success;
 }
 

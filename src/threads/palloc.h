@@ -5,6 +5,7 @@
 #include <list.h>
 #include <hash.h>
 #include "threads/synch.h"
+#include "filesys/file.h"
 
 /* How to allocate pages. */
 enum palloc_flags
@@ -14,7 +15,7 @@ enum palloc_flags
     PAL_USER = 004              /* User page. */
   };
 
-#define FRAME_LIMIT 32
+#define FRAME_LIMIT 320
 #define SWAP_LIMIT 1<<13
 
 struct frame
@@ -27,23 +28,21 @@ struct frame
 
 struct page
 {
-  bool swapped;
+//  bool swapped;
   bool readonly;
   bool zeroed;
+//  bool demand;
   uint32_t sector;
   struct frame *frame;
-  struct page_entry *entry;
-};
-
-struct page_entry
-{
   void* upage;
-  struct page* page;
   struct hash_elem elem;
+  struct file *file;
+  off_t ofs;
 };
 
-unsigned char *swap;
+unsigned char *swap_map;
 struct lock swap_lock;
+unsigned int swap_pointer;
 
 struct lock frame_lock;
 struct list frame_list;
@@ -51,6 +50,7 @@ int frame_size;
 
 void add_page_to_frames(struct page *p);
 void evict_frame(void);
+void delete_frame(struct frame*);
 void restore_page(struct page*);
 
 void palloc_init (size_t user_page_limit);

@@ -219,6 +219,7 @@ thread_create (const char *name, int priority,
   t->load_status = 0;
   sema_init(&t->loaded, 0);
   sema_init(&t->exit, 0);
+  t->stack_pages = 0;
   /* Add to run queue. */
   thread_unblock (t);
   hash_init(&t->page_table, page_hash_func, page_less_func, NULL);
@@ -326,9 +327,9 @@ thread_exit (void)
   struct hash_iterator i;
   hash_first (&i, &thread_current()->page_table);
   while (hash_next (&i)) {
-    struct page_entry *entry = hash_entry (hash_cur (&i), struct page_entry, elem);
-    if( entry->page->frame != NULL ) {
-      list_remove( &entry->page->frame->elem );
+    struct page *entry = hash_entry (hash_cur (&i), struct page, elem);
+    if( entry->frame != NULL ) {
+      list_remove( &entry->frame->elem );
       frame_size--;
     }
   }
@@ -676,29 +677,47 @@ struct thread* thread_get_by_id(tid_t tid) {
 }
 
 static unsigned page_hash_func(const struct hash_elem* a, void* aux UNUSED) {
-  return hash_entry( a, struct page_entry, elem)->upage;
+  return hash_entry(a, struct page, elem)->upage;
 }
 
 static bool page_less_func(const struct hash_elem* a, const struct hash_elem* b, void* aux UNUSED) {
   return page_hash_func(a, aux) < page_hash_func(b, aux);
 }
 
-struct page* init_page(void *upage, bool readonly, bool zeroed) {
+struct page* init_page(void *upage, bool readonly, bool zeroed, struct file *f, off_t ofs) {
   struct page *p = (struct page*) malloc(sizeof (struct page));
-  struct page_entry *entry = (struct page_entry*) malloc(sizeof (struct page_entry));
-  p->swapped = 0;
+  printf("malloced page: %p for upage %p readonly: %d\n",p,upage,readonly);
+//  if( !p ) {
+//    printf("size: %u\n", hash_size(&thread_current()->page_table));
+//  }
+//  p->swapped = 0;
   p->readonly = readonly;
   p->zeroed = zeroed;
-  p->entry = entry;
-  p->entry->page = p;
-  p->entry->upage = upage;
-  struct hash_elem *elem = hash_insert( &thread_current()->page_table, &entry->elem );
-  ASSERT ( elem == NULL );
+  p->frame = NULL;
+  p->upage = upage;
+//  printf("upage: %p zeroed: %d\n", upage, p->zeroed);
+  if(f != NULL ) {
+    p->file = file_reopen(f);
+    p->ofs = ofs;
+  } else {
+    p->file = NULL;
+  }
+  struct hash_elem *elem = hash_replace( &thread_current()->page_table, &p->elem );
+  if( elem != NULL ) {
+    struct page *existing = hash_entry(elem, struct page, elem);
+    if(existing->frame != NULL) {
+      lock_acquire(&frame_lock);
+      delete_frame(existing->frame);
+      lock_release(&frame_lock);
+    }
+    free(existing);
+  }
+//  ASSERT ( elem == NULL );
   return p;
 }
 
 struct page* get_page(void *upage) {
-  struct page_entry entry;
+  struct page entry;
   entry.upage = (void*) ((uintptr_t)upage & 0xFFFFF000);
   size_t size = hash_size(&thread_current()->page_table);
   if ( size > 0 ) {
@@ -706,7 +725,7 @@ struct page* get_page(void *upage) {
     if(entry_in_table == NULL) {
       return NULL;
     }
-    return hash_entry( entry_in_table, struct page_entry, elem )->page;
+    return hash_entry( entry_in_table, struct page, elem );
   }
   return NULL;
 }

@@ -6,6 +6,8 @@
 #include "threads/thread.h"
 #include "userprog/syscall.h"
 #include "threads/palloc.h"
+#include "threads/vaddr.h"
+#include "userprog/process.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -153,24 +155,34 @@ page_fault (struct intr_frame *f)
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-/*  printf ("Page fault at %p by thread id:%d: %s error %s page in %s context.\n",
+  printf ("Page fault at %p by thread id:%d: %s error %s page in %s context.\n",
           fault_addr,
           thread_current()->tid,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
-*/
+
+  if(!not_present) {
+    debug_backtrace_all();
+  }
+
   struct page* page = get_page(fault_addr);
-  if ( page == NULL ) 
+  if ( page == NULL || page->readonly && write ) 
   {
-//    printf("page not found \n");
+    printf("page not found \n");
     //palloc_free_page(fault_addr);
-    f->esp = NULL;
-    syscall_handler(f); // process exits with status -1
+    if( fault_addr < f->ebp && fault_addr > (f->esp - (2<<6))) {
+//      printf("grow stack\n");
+      add_stack();
+    } else {
+//      printf("kill\n");
+      f->esp = NULL;
+      syscall_handler(f); // process exits with status -1
+    }
     //    kill(f);
   }
   else {
-//    printf("page found \n");
+    printf("page found \n");
     // locate the faulting address in the supplemental page table
     // use the corresponding entry to (locate the data that goes in the page)
     lock_acquire( &frame_lock );

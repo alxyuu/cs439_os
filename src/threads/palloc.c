@@ -15,6 +15,7 @@
 #include "devices/block.h"
 #include "userprog/pagedir.h"
 #include "threads/pte.h"
+#include "userprog/exception.h"
 
 /* Page allocator.  Hands out memory in page-size (or
    page-multiple) chunks.  See malloc.h for an allocator that
@@ -76,7 +77,7 @@ palloc_init (size_t user_page_limit)
   for( i = 0; i < SWAP_LIMIT; i++) {
     swap_map[i] = 0;
   }
-  swap_pointer = 0;
+  swap_pointer = 1;
 }
 
 /* Obtains and returns a group of PAGE_CNT contiguous free pages.
@@ -219,19 +220,27 @@ void evict_frame() {
   struct page *p = f->page;
   void *upage = p->upage;
   void *page = pagedir_get_page( f->placer->pagedir, upage );
-  if(p->file == NULL) {
+  if(pagedir_is_dirty( f->placer->pagedir, upage ) || (!p->zeroed && p->file == NULL && p->sector == 0)) {
+    if( p->file != NULL ) {
+      file_close(p->file);
+      p->file = NULL;
+    }
+    p->zeroed = false;
     struct block* swap = block_get_role(BLOCK_SWAP);
 //    printf("page table index: %u\n", pt_no(page));
 //    printf("page directory index: %u\n", pd_no(page));
 //    printf("thread pagedir: %u\n", pd_no(thread_current()->pagedir));
-    block_sector_t sector = get_swap_sector();
+//    block_sector_t sector = get_swap_sector();
+    if(p->sector == 0) {
+      p->sector = get_swap_sector();
+    }
 //    printf("sector: %u\n", sector);
 
     int i;
     for( i = 0; i < 8; i++) {
-      block_write(swap, sector + i, page + i * 512);
+      block_write(swap, p->sector + i, page + i * 512);
     }
-    p->sector = sector;
+    swap_write_cnt++;
   }
 
   p->frame = NULL;
@@ -278,8 +287,9 @@ void restore_page( struct page *p ) {
   if( p->zeroed ) {
 //  printf("restoring zeroed page %p\n", p->upage);
 //    printf("restoring zeroed page\n");
-    p->zeroed = false;
+//    p->zeroed = false;
     memset( kpage, 0, PGSIZE );
+    zero_cnt++;
   } else if ( p->file != NULL ) {
 //  printf("restoring demand page %p\n", p->upage);
 //    printf("demand paging\n");
@@ -289,10 +299,11 @@ void restore_page( struct page *p ) {
     }
 //    unsigned *pvals = kpage;
 //    printf("demanded page: %x %x %x %x\n",*pvals, *(pvals+1), *(pvals+2), *(pvals+3));
-    if(!p->readonly) {
-      file_close(p->file);
-      p->file = NULL;
-    }
+//    if(!p->readonly) {
+//      file_close(p->file);
+//      p->file = NULL;
+//    }
+    demand_cnt++;
 //    file_close(p->file);
   } else {
 //  printf("restoring swapped page %p\n", p->upage);
@@ -309,20 +320,23 @@ void restore_page( struct page *p ) {
       // into the designated frame page rather than the VM page.
       block_read( swap, sector + i, kpage + i * 512 );
     }
-    lock_acquire( &swap_lock );
+    /*lock_acquire( &swap_lock );
     unsigned swap_index = sector>>3;
     swap_map[swap_index] = 0;
     if(swap_index < swap_pointer) {
       swap_pointer = swap_index;
     }
     lock_release( &swap_lock );
+    */
   //  unsigned *kvals = (unsigned*)kpage;
   //  unsigned *uvals = (unsigned*)upage;
   //  printf("kernel: %x %x %x %x\n", *kvals, *(kvals+1), *(kvals+2), *(kvals+3));
   //  printf("user: %x %x %x %x\n", *uvals, *(uvals+1), *(uvals+2), *(uvals+3));
+    swap_read_cnt++;
   }
 
   pagedir_set_page( thread_current()->pagedir, p->upage, kpage, !p->readonly);
+  pagedir_set_dirty( thread_current()->pagedir, p->upage, false );
   add_page_to_frames(p);
 //  printf("done restoring\n");
 }

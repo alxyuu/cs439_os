@@ -68,7 +68,8 @@ exception_init (void)
 void
 exception_print_stats (void) 
 {
-  printf ("Exception: %lld page faults\n", page_fault_cnt);
+  printf ("Exception: %lld page faults, %lld zero reads, %lld demand reads, %lld swap reads, %lld swap writes\n", 
+                      page_fault_cnt,   zero_cnt,        demand_cnt,        swap_read_cnt,   swap_write_cnt);
 }
 
 /* Handler for an exception (probably) caused by a user process. */
@@ -174,7 +175,6 @@ page_fault (struct intr_frame *f)
           write ? "writing" : "reading",
           user ? "user" : "kernel");
 
-    printf("page not found \n");
     debug_backtrace();
 */
 //      printf("kill\n");

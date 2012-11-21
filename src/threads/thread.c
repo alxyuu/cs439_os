@@ -352,6 +352,15 @@ static void page_destructor(struct hash_elem *e, void *aux UNUSED) {
     list_remove( &entry->frame->elem );
     frame_size--;
   }
+  if(entry->file != NULL) {
+    file_close(entry->file);
+  }
+  if(entry->sector != 0) {
+    swap_map[entry->sector] = 0;
+    if(entry->sector < swap_pointer) {
+      swap_pointer = entry->sector;
+    }
+  }
   free(entry);
 }
 
@@ -700,6 +709,7 @@ struct page* init_page(void *upage, bool readonly, bool zeroed, struct file *f, 
 //  p->swapped = 0;
   p->readonly = readonly;
   p->zeroed = zeroed;
+  p->sector = 0;
   p->frame = NULL;
   p->upage = upage;
 //  printf("upage: %p zeroed: %d\n", upage, p->zeroed);

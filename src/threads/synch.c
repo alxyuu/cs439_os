@@ -389,13 +389,23 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 bool lock_donate_priority_nest(struct lock *lock, int priority) {
   if(lock->holder == NULL)
     return 0;
+//  printf("donating priority for lock %p\n", lock);
   bool ret = 0;
   int i;
   for(i = 0; i < 10; i++) {
-    if(lock == NULL) {
+    if(lock == NULL || lock->holder == NULL) {
       break;
     }
     ret = lock_donate_priority(lock,priority) || ret;
+/*    if (lock->holder == NULL) {
+      printf("i: %d\n", i);
+      printf("lock: %p\n",lock);
+      printf("holder: %p\n",lock->holder);
+      PANIC("wtf2");
+    }
+    if(lock->holder->waiting != NULL && lock->holder->waiting->holder == NULL) {
+      printf("lock: %p\n",lock);
+    }*/
     lock = lock->holder->waiting;
   }
   return ret;
@@ -407,7 +417,7 @@ bool lock_donate_priority(struct lock *lock, int priority) {
 
   lock->priority = priority;
   if(priority > lock->holder->priority) {
-//    printf("accepting donation of %d\n",priority);
+    printf("accepting donation of %d\n",priority);
     lock->holder->priority = priority;
     return 1;
   }

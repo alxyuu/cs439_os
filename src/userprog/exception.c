@@ -162,9 +162,9 @@ page_fault (struct intr_frame *f)
   if ( page == NULL || page->readonly && write ) 
   {
     //palloc_free_page(fault_addr);
-    if( fault_addr < f->ebp && fault_addr > (f->esp - (2<<6))) {
-      printf("grow stack\n");
-      add_stack();
+    if( fault_addr < f->ebp && fault_addr > (f->esp - (2<<6)) && add_stack()) {
+//      printf("grow stack\n");
+//      add_stack();
     } else {
 /*  printf ("Page fault at %p by %s id:%d: %s error %s page in %s context.\n",
           fault_addr,

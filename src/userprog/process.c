@@ -495,6 +495,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           init_page(upage, !writable, 1, NULL, 0);
       } else if( page_read_bytes == PGSIZE ) {
           init_page(upage, !writable, 0, file, ofs);
+          ofs += page_read_bytes;
+          file_seek(file, ofs);
       } else {
       lock_acquire( &frame_lock );
       if(frame_size >= FRAME_LIMIT)
@@ -540,6 +542,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           return false;
         }
 
+//      if(!page_zero_bytes) {
+//        unsigned *pvals = kpage;
+//        printf("demand page: %x %x %x %x\n",*pvals, *(pvals+1), *(pvals+2), *(pvals+3));
+//      }
       struct page *p = init_page(upage, !writable, 0, NULL, 0);
       add_page_to_frames(p);
       }

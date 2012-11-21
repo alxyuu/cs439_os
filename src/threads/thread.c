@@ -76,6 +76,7 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 static unsigned page_hash_func(const struct hash_elem*, void*);
 static bool page_less_func(const struct hash_elem*, const struct hash_elem*, void*);
+static void page_destructor(struct hash_elem *e, void *aux UNUSED);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -322,18 +323,15 @@ thread_exit (void)
   ASSERT (!intr_context ());
 
 #ifdef USERPROG
-  if(!lock_held_by_current_thread(&frame_lock))
+  bool acquired = false;
+  if(!lock_held_by_current_thread(&frame_lock)) {
+    acquired = true;
     lock_acquire(&frame_lock);
-  struct hash_iterator i;
-  hash_first (&i, &thread_current()->page_table);
-  while (hash_next (&i)) {
-    struct page *entry = hash_entry (hash_cur (&i), struct page, elem);
-    if( entry->frame != NULL ) {
-      list_remove( &entry->frame->elem );
-      frame_size--;
-    }
   }
-  lock_release(&frame_lock);
+  hash_destroy(&thread_current()->page_table, page_destructor);
+  if(acquired) {
+    lock_release(&frame_lock);
+  }
   process_exit ();
 #endif
 
@@ -346,6 +344,15 @@ thread_exit (void)
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
+}
+
+static void page_destructor(struct hash_elem *e, void *aux UNUSED) {
+  struct page *entry = hash_entry (e, struct page, elem);
+  if( entry->frame != NULL ) {
+    list_remove( &entry->frame->elem );
+    frame_size--;
+  }
+  free(entry);
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
@@ -686,7 +693,7 @@ static bool page_less_func(const struct hash_elem* a, const struct hash_elem* b,
 
 struct page* init_page(void *upage, bool readonly, bool zeroed, struct file *f, off_t ofs) {
   struct page *p = (struct page*) malloc(sizeof (struct page));
-  printf("malloced page: %p for upage %p readonly: %d\n",p,upage,readonly);
+//  printf("malloced page: %p for upage %p readonly: %d\n",p,upage,readonly);
 //  if( !p ) {
 //    printf("size: %u\n", hash_size(&thread_current()->page_table));
 //  }
@@ -703,7 +710,7 @@ struct page* init_page(void *upage, bool readonly, bool zeroed, struct file *f, 
     p->file = NULL;
   }
   struct hash_elem *elem = hash_replace( &thread_current()->page_table, &p->elem );
-  if( elem != NULL ) {
+/*  if( elem != NULL ) {
     struct page *existing = hash_entry(elem, struct page, elem);
     if(existing->frame != NULL) {
       lock_acquire(&frame_lock);
@@ -711,7 +718,7 @@ struct page* init_page(void *upage, bool readonly, bool zeroed, struct file *f, 
       lock_release(&frame_lock);
     }
     free(existing);
-  }
+  }*/
 //  ASSERT ( elem == NULL );
   return p;
 }

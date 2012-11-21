@@ -212,15 +212,10 @@ void add_page_to_frames(struct page *p) // which file typedefs uintptr_t? :S
 }
 
 void evict_frame() {
-//  printf("evicting frame\n");
-  struct frame *f = list_entry( list_pop_front(&frame_list), struct frame, elem );
-  delete_frame(f);
-}
-
-void delete_frame(struct frame *f) {
   ASSERT ( lock_held_by_current_thread(&frame_lock) );
   ASSERT ( frame_size >= FRAME_LIMIT );
 
+  struct frame *f = list_entry( list_pop_front(&frame_list), struct frame, elem );
   struct page *p = f->page;
   void *upage = p->upage;
   void *page = pagedir_get_page( f->placer->pagedir, upage );
@@ -275,23 +270,33 @@ void restore_page( struct page *p ) {
 
   uint8_t *kpage = palloc_get_page( PAL_USER );
 //  printf("kpage: %p\n", kpage);
-  printf("restoring page %p\n", p->upage);
+//  printf("restoring page %p\n", p->upage);
 
 
   ASSERT ( kpage != NULL );
 
   if( p->zeroed ) {
-    printf("restoring zeroed page\n");
+//  printf("restoring zeroed page %p\n", p->upage);
+//    printf("restoring zeroed page\n");
     p->zeroed = false;
     memset( kpage, 0, PGSIZE );
   } else if ( p->file != NULL ) {
-    printf("demand paging\n");
+//  printf("restoring demand page %p\n", p->upage);
+//    printf("demand paging\n");
     file_seek(p->file, p->ofs);
     if (file_read (p->file, kpage, PGSIZE) != (int) PGSIZE) {
       PANIC("file read size mismatch\n");
     }
+//    unsigned *pvals = kpage;
+//    printf("demanded page: %x %x %x %x\n",*pvals, *(pvals+1), *(pvals+2), *(pvals+3));
+    if(!p->readonly) {
+      file_close(p->file);
+      p->file = NULL;
+    }
 //    file_close(p->file);
   } else {
+//  printf("restoring swapped page %p\n", p->upage);
+
 //    printf("restoring swapped page\n");
 //    ASSERT ( p->swapped );
     struct block* swap = block_get_role(BLOCK_SWAP);
@@ -319,6 +324,6 @@ void restore_page( struct page *p ) {
 
   pagedir_set_page( thread_current()->pagedir, p->upage, kpage, !p->readonly);
   add_page_to_frames(p);
-  printf("done restoring\n");
+//  printf("done restoring\n");
 }
 

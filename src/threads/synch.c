@@ -417,7 +417,7 @@ bool lock_donate_priority(struct lock *lock, int priority) {
 
   lock->priority = priority;
   if(priority > lock->holder->priority) {
-    printf("accepting donation of %d\n",priority);
+//    printf("accepting donation of %d\n",priority);
     lock->holder->priority = priority;
     return 1;
   }

@@ -167,7 +167,7 @@ page_fault (struct intr_frame *f)
 //      printf("grow stack\n");
 //      add_stack();
     } else {
-/*  printf ("Page fault at %p by %s id:%d: %s error %s page in %s context.\n",
+  printf ("Page fault at %p by %s id:%d: %s error %s page in %s context.\n",
           fault_addr,
           thread_name(),
           thread_current()->tid,
@@ -176,7 +176,7 @@ page_fault (struct intr_frame *f)
           user ? "user" : "kernel");
 
     debug_backtrace();
-*/
+
 //      printf("kill\n");
       f->esp = NULL;
       syscall_handler(f); // process exits with status -1
@@ -187,14 +187,8 @@ page_fault (struct intr_frame *f)
 //    printf("page found \n");
     // locate the faulting address in the supplemental page table
     // use the corresponding entry to (locate the data that goes in the page)
-    lock_acquire( &frame_lock );
-    if( frame_size >= FRAME_LIMIT ) {
-      evict_frame();
-    }
-    frame_size++; // why do we increment frame size here?
-    lock_release( &frame_lock );
     restore_page( page ); // update the PTE as valid in memory instead of creating a new page
-    }
+  }
 
 /*How page fault handler works? 
 The kernel raises a page fault exception when a process accesses a page that is not in memory. The page fault is serviced as follows:-

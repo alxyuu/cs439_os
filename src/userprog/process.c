@@ -491,31 +491,25 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      if( frame_size > 32 && !page_read_bytes ) {
+      if( frame_pointer > 10 /*magiclol*/ && !page_read_bytes ) {
           init_page(upage, !writable, 1, NULL, 0);
       } else if( page_read_bytes == PGSIZE ) {
           init_page(upage, !writable, 0, file, ofs);
           ofs += page_read_bytes;
           file_seek(file, ofs);
       } else {
-      lock_acquire( &frame_lock );
-      if(frame_size >= FRAME_LIMIT)
-        evict_frame();
-        //PANIC ("No frame is free!"); // temporary
-      frame_size++;
-      lock_release ( &frame_lock );
+
+      int frame_index = allocate_frame_index();
 
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
       // if page not found, page fault
       if (kpage == NULL) {
-        lock_acquire( &frame_lock );
-        frame_size--;
-        lock_release( &frame_lock );
-        printf("PGSIZE: %d\n", PGSIZE);
-        printf("read bytes: %u\n", page_read_bytes);
-        printf("zero bytes: %u\n", page_zero_bytes);
-	printf("page not found\n");
+        deallocate_frame_index(frame_index);
+//        printf("PGSIZE: %d\n", PGSIZE);
+//        printf("read bytes: %u\n", page_read_bytes);
+//        printf("zero bytes: %u\n", page_zero_bytes);
+//        printf("page not found\n");
         return false;
       }
 
@@ -523,10 +517,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
           palloc_free_page (kpage);
-          lock_acquire( &frame_lock );
-          frame_size--;
-          lock_release( &frame_lock );
-          printf("file not read\n");
+          deallocate_frame_index(frame_index);
+//          printf("file not read\n");
           return false;
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
@@ -535,10 +527,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (!install_page (upage, kpage, writable))
         {
           palloc_free_page (kpage);
-          lock_acquire( &frame_lock );
-          frame_size--;
-          lock_release( &frame_lock );
-          printf("unable to install page\n");
+          deallocate_frame_index(frame_index);
+//          printf("unable to install page\n");
           return false;
         }
 
@@ -547,7 +537,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 //        printf("demand page: %x %x %x %x\n",*pvals, *(pvals+1), *(pvals+2), *(pvals+3));
 //      }
       struct page *p = init_page(upage, !writable, 0, NULL, 0);
-      add_page_to_frames(p);
+      add_page_to_frames(p, frame_index);
       }
       /* Advance. */
       read_bytes -= page_read_bytes;

@@ -348,9 +348,9 @@ thread_exit (void)
 
 static void page_destructor(struct hash_elem *e, void *aux UNUSED) {
   struct page *entry = hash_entry (e, struct page, elem);
-  if( entry->frame != NULL ) {
-    list_remove( &entry->frame->elem );
-    frame_size--;
+  if( entry->frame_index != -1 ) {
+    frame_list[entry->frame_index] = NULL;
+    frame_pointer = entry->frame_index;
   }
   if(entry->file != NULL) {
     file_close(entry->file);
@@ -710,7 +710,8 @@ struct page* init_page(void *upage, bool readonly, bool zeroed, struct file *f, 
   p->readonly = readonly;
   p->zeroed = zeroed;
   p->sector = 0;
-  p->frame = NULL;
+  p->frame_index = -1;
+  p->owner = thread_current();
   p->upage = upage;
 //  printf("upage: %p zeroed: %d\n", upage, p->zeroed);
   if(f != NULL ) {

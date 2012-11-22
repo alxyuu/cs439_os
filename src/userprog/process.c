@@ -100,6 +100,7 @@ start_process (void *file_name_)
   /* If load failed, quit. */
   /* Increment the semaphores for exec and wait to ensure mutual exclusion among different processes*/
   if (!success) {
+//    printf("load failed\n");
     t->load_status = 0;
     sema_up(&t->loaded);
     statuses[t->tid] = -1;
@@ -396,7 +397,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Set up stack. */
   if (!setup_stack (esp)) {
-//    printf("load: unable to setup stack\n");
+    printf("load: unable to setup stack\n");
     goto done;
   }
 
@@ -505,12 +506,16 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       uint8_t *kpage = palloc_get_page (PAL_USER);
       // if page not found, page fault
       if (kpage == NULL) {
-        deallocate_frame_index(frame_index);
+//        printf("cheater cheater pumpkin eater\n");
+        kpage = palloc_get_page(0);
+        if(kpage == NULL) {
+          deallocate_frame_index(frame_index);
 //        printf("PGSIZE: %d\n", PGSIZE);
 //        printf("read bytes: %u\n", page_read_bytes);
 //        printf("zero bytes: %u\n", page_zero_bytes);
-//        printf("page not found\n");
-        return false;
+          printf("unable to allocate page");
+          return false;
+        }
       }
 
       /* Load this page. */
@@ -518,7 +523,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         {
           palloc_free_page (kpage);
           deallocate_frame_index(frame_index);
-//          printf("file not read\n");
+          printf("file not read\n");
           return false;
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
@@ -528,7 +533,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         {
           palloc_free_page (kpage);
           deallocate_frame_index(frame_index);
-//          printf("unable to install page\n");
+          printf("unable to install page\n");
           return false;
         }
 
@@ -568,6 +573,9 @@ add_stack () {
   if( t->stack_pages < STACK_LIMIT ) {
     t->stack_pages++;
     kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+    if(kpage == NULL) {
+      kpage = palloc_get_page(PAL_ZERO);
+    }
     if (kpage != NULL)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - (t->stack_pages * PGSIZE), kpage, true);

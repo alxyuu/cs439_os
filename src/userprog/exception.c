@@ -167,7 +167,7 @@ page_fault (struct intr_frame *f)
 //      printf("grow stack\n");
 //      add_stack();
     } else {
-  printf ("Page fault at %p by %s id:%d: %s error %s page in %s context.\n",
+/*  printf ("Page fault at %p by %s id:%d: %s error %s page in %s context.\n",
           fault_addr,
           thread_name(),
           thread_current()->tid,
@@ -176,7 +176,7 @@ page_fault (struct intr_frame *f)
           user ? "user" : "kernel");
 
     debug_backtrace();
-
+*/
 //      printf("kill\n");
       f->esp = NULL;
       syscall_handler(f); // process exits with status -1

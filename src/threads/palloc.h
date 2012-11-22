@@ -15,7 +15,7 @@ enum palloc_flags
     PAL_USER = 004              /* User page. */
   };
 
-#define FRAME_LIMIT 600
+#define FRAME_LIMIT 500
 #define SWAP_LIMIT 1<<13
 #define FRAME_MAGIC 0xDEADBEEF
 

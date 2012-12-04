@@ -101,10 +101,11 @@ syscall_handler (struct intr_frame *f)
           goto exit;
         }
         bool created = filesys_create(file, size);
-        if(created)
+        if(created) {
           f->eax = 1;
-        else
+        } else {
           f->eax = 0;
+        }
         break;
       }
     } 

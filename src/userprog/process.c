@@ -1,4 +1,4 @@
-#include "userprog/process.h"
+	#include "userprog/process.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -58,6 +58,11 @@ process_execute (const char *file_name)
 
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
+
+  if(!thread_current()->current_dir) {
+    thread_current()->current_dir = ROOT_DIR_SECTOR;
+  }
+  thread_get_by_id(tid)->current_dir = thread_current()->current_dir;
 
   return tid;
 }

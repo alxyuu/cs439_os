@@ -7,6 +7,7 @@
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "filesys/directory.h"
+#include "threads/thread.h"
 
 /* Partition that contains the file system. */
 struct block *fs_device;
@@ -41,6 +42,7 @@ filesys_done (void)
   free_map_close ();
 }
 
+
 /* Creates a file named NAME with the given INITIAL_SIZE.
    Returns true if successful, false otherwise.
    Fails if a file named NAME already exists,
@@ -49,15 +51,59 @@ bool
 filesys_create (const char *name, off_t initial_size) 
 {
   block_sector_t inode_sector = 0;
-  struct dir *dir = dir_open_root ();
-  bool success = (dir != NULL
-                  && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size)
-                  && dir_add (dir, name, inode_sector));
-  if (!success && inode_sector != 0) 
-    free_map_release (inode_sector, 1);
-  dir_close (dir);
 
+  struct dir* current;
+  struct inode* inode;
+  char* filename = malloc(sizeof(char) * (strlen(name) + 1));
+  strlcpy(filename, name, strlen(name) + 1);
+  if(*filename == '/') { //absolute
+    current = dir_open_root();
+  } else {
+    if(!thread_current()->current_dir) {
+      thread_current()->current_dir = ROOT_DIR_SECTOR;
+    }
+    current = dir_open(inode_open(thread_current()->current_dir));
+  }
+  bool success = false;
+  char *token;
+  char *save_ptr;
+  char *newfile;
+  for (token = strtok_r(filename, "/", &save_ptr); token != NULL; token = strtok_r(NULL, "/", &save_ptr)) {
+    if(*token != '\0') {
+      if(!dir_lookup(current, token, &inode)) {
+        newfile = token;
+        token = strtok_r(NULL, "/", &save_ptr);
+        success = true;
+        while(token != NULL) {
+          if(*token != '\0') {
+            success = false;
+            break;
+          }
+          token = strtok_r(NULL, "/", &save_ptr);
+        }
+        break;
+      } else {
+        if(!inode_isdir(inode)) {
+          break;
+        } else {
+          dir_close(current);
+          current = dir_open(inode);
+        }
+      }
+    }
+  }
+
+  if(success) {
+       success = (current != NULL
+                  && free_map_allocate (1, &inode_sector)
+                  && inode_create (inode_sector, initial_size, false)
+                  && dir_add (current, newfile, inode_sector));
+  }
+  if (!success && inode_sector != 0)
+    free_map_release (inode_sector, 1);
+
+  free(filename);
+  dir_close (current);
   return success;
 }
 
@@ -69,14 +115,47 @@ filesys_create (const char *name, off_t initial_size)
 struct file *
 filesys_open (const char *name)
 {
-  struct dir *dir = dir_open_root ();
   struct inode *inode = NULL;
 
-  if (dir != NULL) {
-    dir_lookup (dir, name, &inode);
+  struct dir* current;
+  char* filename = malloc(sizeof(char) * (strlen(name) + 1));
+  strlcpy(filename, name, strlen(name) + 1);
+  if(*filename == '/') { //absolute
+    current = dir_open_root();
+  } else {
+    if(!thread_current()->current_dir) {
+      thread_current()->current_dir = ROOT_DIR_SECTOR;
+    }
+    current = dir_open(inode_open(thread_current()->current_dir));
   }
-  dir_close (dir);
+  bool success = false;
+  char *token;
+  char *save_ptr;
+  char *newfile;
+  for (token = strtok_r(filename, "/", &save_ptr); token != NULL; token = strtok_r(NULL, "/", &save_ptr)) {
+    if(*token != '\0') {
+      if(!dir_lookup(current, token, &inode)) {
+        break;
+      } else {
+        if(!inode_isdir(inode)) {
+          newfile = token;
+          token = strtok_r(NULL, "/", &save_ptr);
+          if(token == NULL) {
+            success = true;
+          }
+          break;
+        } else {
+          dir_close(current);
+          current = dir_open(inode);
+        }
+      }
+    }
+  }
 
+  if (success && current != NULL) {
+    dir_lookup (current, newfile, &inode);
+  }
+  dir_close (current);
   return file_open (inode);
 }
 
@@ -100,7 +179,7 @@ do_format (void)
 {
   printf ("Formatting file system...");
   free_map_create ();
-  if (!dir_create (ROOT_DIR_SECTOR, 16))
+  if (!dir_create (ROOT_DIR_SECTOR, ROOT_DIR_SECTOR))
     PANIC ("root directory creation failed");
   free_map_close ();
   printf ("done.\n");

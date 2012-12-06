@@ -244,6 +244,154 @@ syscall_handler (struct intr_frame *f)
         break;
       }
     }
+    case SYS_INUMBER: {
+      if(!is_valid_addr(f->esp+4)) {
+        goto exit;
+      } else {
+        int fd = *(int*)(f->esp+4);
+        if(t->fds[fd] == NULL) {
+          goto exit;
+        }
+	f->eax = inode_get_inumber(file_get_inode(t->fds[fd]));
+        break;
+      }
+    }
+    case SYS_ISDIR: {
+      if(!is_valid_addr(f->esp+4)) {
+        goto exit;
+      } else {
+        int fd = *(int*)(f->esp+4);
+        if(t->fds[fd] == NULL) {
+          goto exit;
+        }
+	f->eax = inode_isdir(file_get_inode(t->fds[fd]));
+        break;
+      }
+    }
+    case SYS_CHDIR: {
+      if(!is_valid_addr(f->esp+4)) {
+        goto exit;
+      } else {
+        const char *filename = *(char**)(f->esp+4);
+        if(!is_valid_str(filename)) {
+          goto exit;
+        }
+        uint32_t success = 1;
+        struct dir* current;
+        struct inode* inode;
+        if(*filename == '/') { //absolute
+          current = dir_open(inode_open(ROOT_DIR_SECTOR));
+        } else {
+          current = dir_open(inode_open(thread_current()->current_dir));
+        }
+        char *name;
+        char *save_ptr;
+        for (name = strtok_r(filename, "/", &save_ptr); name != NULL; name = strtok_r(NULL, "/", &save_ptr)) {
+          if(*name != '\0') {
+            if(!dir_lookup(current, name, &inode)) {
+              success = 0;
+              break;
+            } else {
+              if(!inode_isdir(inode)) {
+                success = 0;
+                break;
+              } else {
+                dir_close(current);
+                current = dir_open(inode);
+              }
+            }
+          }
+        }
+        if(success && current != NULL) {
+          thread_current()->current_dir = inode_get_inumber(dir_get_inode(current));
+          dir_close(current);
+        } else {
+          success = 0;
+        }
+        f->eax = success;
+        break;
+      }
+    }
+    case SYS_MKDIR: {
+      if(!is_valid_addr(f->esp+4)) {
+        goto exit;
+      } else {
+        const char *filename = *(char**)(f->esp+4);
+        if(!is_valid_str(filename)) {
+          goto exit;
+        }
+        uint32_t success = 0;
+        struct dir* current;
+        struct inode* inode;
+        if(*filename == '/') { //absolute
+          current = dir_open(inode_open(ROOT_DIR_SECTOR));
+        } else {
+          current = dir_open(inode_open(thread_current()->current_dir));
+        }
+        char *name;
+        char *save_ptr;
+        char *newdir;
+        for (name = strtok_r(filename, "/", &save_ptr); name != NULL; name = strtok_r(NULL, "/", &save_ptr)) {
+          if(*name != '\0') {
+            if(!dir_lookup(current, name, &inode)) {
+              newdir = name;
+              name = strtok_r(NULL, "/", &save_ptr);
+              success = 1;
+              while(name != NULL) {
+                if(*name != '\0') {
+                  success = 0;
+                  break;
+                }
+                name = strtok_r(NULL, "/", &save_ptr);
+              }
+              break;
+            } else {
+              if(!inode_isdir(inode)) {
+                break;
+              } else {
+                dir_close(current);
+                current = dir_open(inode);
+              }
+            }
+          }
+        }
+        if(success && current != NULL && newdir != NULL) {
+          block_sector_t sector;
+          if(!free_map_allocate(1, &sector) ||
+             !dir_create(sector, inode_get_inumber(dir_get_inode(current))) ||
+             !dir_add(current, newdir, sector)) {
+            success = 0;
+          }
+        } else {
+          success = 0;
+        }
+        if(current != NULL) {
+          dir_close(current);
+        }
+        f->eax = success;
+        break;
+      }
+    }
+    case SYS_READDIR: {
+      if(!is_valid_addr(f->esp+4) || !is_valid_addr(f->esp+8)) {
+        goto exit;
+      } else {
+        int fd = *(int*)(f->esp+4);
+        char *name = *(char **)(f->esp+8);
+        if(t->fds[fd] == NULL) {
+          goto exit;
+        }
+        bool success = 0;
+        if(inode_isdir(file_get_inode(t->fds[fd]))) {
+          success = dir_readdir(t->fds[fd], name);
+          while(success && *name == '.') {
+            success = dir_readdir(t->fds[fd], name);
+          }
+        }
+	f->eax = success;
+        break;
+      }
+    }
     case SYS_EXIT: {
       if(is_valid_addr(f->esp+4)) {
         status = *(int*)(f->esp + 4);

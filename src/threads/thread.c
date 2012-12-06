@@ -14,6 +14,7 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+#include "filesys/filesys.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -213,6 +214,7 @@ thread_create (const char *name, int priority,
   t->load_status = 0;
   sema_init(&t->loaded, 0);
   sema_init(&t->exit, 0);
+  t->current_dir = ROOT_DIR_SECTOR;
   /* Add to run queue. */
   thread_unblock (t);
   if( !intr_context() && t->priority > thread_current()->priority ) {

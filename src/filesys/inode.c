@@ -8,7 +8,8 @@
 #include "threads/malloc.h"
 
 /* Identifies an inode. */
-#define INODE_MAGIC 0x494e4f44
+#define INODE_MAGIC_DIR 0x494e4f44
+#define INODE_MAGIC_FILE 0x494e4f45
 
 #define BAD_SECTOR 0x55555555
 
@@ -238,7 +239,7 @@ inode_init (void)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, off_t length)
+inode_create (block_sector_t sector, off_t length, bool isdir)
 {
 	struct inode_disk *disk_inode = NULL;
 	bool success = false;
@@ -254,7 +255,11 @@ inode_create (block_sector_t sector, off_t length)
 	{
 		size_t sectors = bytes_to_sectors (length);
 		disk_inode->length = length;
-		disk_inode->magic = INODE_MAGIC;
+		if(isdir) {
+			disk_inode->magic = INODE_MAGIC_DIR;
+		} else {
+			disk_inode->magic = INODE_MAGIC_FILE;
+		}
 		disk_inode->indirect = BAD_SECTOR; //allocate later
 		disk_inode->secondIndirect = BAD_SECTOR; //allocate later
 		memset(disk_inode->blocks, BAD_SECTOR, DIRECT_BLOCK_CNT*sizeof(uint32_t));
@@ -404,7 +409,14 @@ inode_open (block_sector_t sector)
 	inode->secondIndirect = NULL;
 	inode->secondIndirectBlocks = NULL;
 	block_read (fs_device, inode->sector, &inode->data);
+	if(inode->data.magic & INODE_MAGIC_DIR != INODE_MAGIC_DIR) {
+		return NULL;
+	}
 	return inode;
+}
+
+bool inode_isdir(struct inode *inode) {
+	return inode->data.magic ^ INODE_MAGIC_FILE;
 }
 
 /* Reopens and returns INODE. */

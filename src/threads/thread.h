@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include <threads/synch.h>
+#include <devices/block.h>
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -116,6 +117,7 @@ struct thread
     struct lock *waiting;               /* Lock on which this thread is waiting */
     struct file *fds[16];               // keeps track of just this thread's currently open files.  Necessary to prevent child processes from inheriting the files
     struct file *exec;                  // the file that the current process is currently running; tracks if program can write to this process or not
+    block_sector_t current_dir;
   };
 
 /* If false (default), use round-robin scheduler.

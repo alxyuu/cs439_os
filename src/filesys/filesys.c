@@ -132,6 +132,11 @@ filesys_open (const char *name)
   char *token;
   char *save_ptr;
   char *newfile;
+  if(!strcmp(filename,"/")) {
+    printf("opening root\n");
+    newfile = ".";
+    success = true;
+  } else {
   for (token = strtok_r(filename, "/", &save_ptr); token != NULL; token = strtok_r(NULL, "/", &save_ptr)) {
     if(*token != '\0') {
       if(!dir_lookup(current, token, &inode)) {
@@ -150,6 +155,7 @@ filesys_open (const char *name)
         }
       }
     }
+  }
   }
 
   if (success && current != NULL) {

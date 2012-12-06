@@ -201,7 +201,11 @@ syscall_handler (struct intr_frame *f)
            if(t->fds[fd] == NULL) {
               goto exit;
             }
-           f->eax = (int)file_write(t->fds[fd], buffer, size);
+           if(inode_isdir(file_get_inode(t->fds[fd]))) {
+             f->eax = -1;
+           } else {
+             f->eax = (int)file_write(t->fds[fd], buffer, size);
+           }
         }
         break;
       }

@@ -389,6 +389,9 @@ inode_open (block_sector_t sector)
 		inode = list_entry (e, struct inode, elem);
 		if (inode->sector == sector)
 		{
+			if (inode->removed) {
+				return NULL;
+			}
 			inode_reopen (inode);
 			return inode;
 		}
@@ -416,6 +419,7 @@ inode_open (block_sector_t sector)
 }
 
 bool inode_isdir(struct inode *inode) {
+	printf("", inode->data.magic); //i don't even
 	return inode->data.magic ^ INODE_MAGIC_FILE;
 }
 
@@ -599,6 +603,9 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 		if( sector_idx == BAD_SECTOR ) {
 			sector_idx = allocate_sector(inode, offset, size);
 			//printf("allocated sector: %u\n", sector_idx);
+			if(sector_idx == BAD_SECTOR) { //failed to allocate
+				return 0;
+			}
 		}
 		//printf("writing to sector index %u\n", sector_idx);
 		//if(!sector_idx) {

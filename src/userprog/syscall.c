@@ -201,7 +201,8 @@ syscall_handler (struct intr_frame *f)
            if(t->fds[fd] == NULL) {
               goto exit;
             }
-           if(inode_isdir(file_get_inode(t->fds[fd]))) {
+            bool isdir = inode_isdir(file_get_inode(t->fds[fd]));
+           if(isdir) {
              f->eax = -1;
            } else {
              f->eax = (int)file_write(t->fds[fd], buffer, size);
@@ -287,6 +288,12 @@ syscall_handler (struct intr_frame *f)
           current = dir_open(inode_open(ROOT_DIR_SECTOR));
         } else {
           current = dir_open(inode_open(thread_current()->current_dir));
+          if(current == NULL) {
+            printf("current sector: %u\n", thread_current()->current_dir);
+            debug_filesys();
+            f->eax = 0;
+            break;
+          }
         }
         char *name;
         char *save_ptr;
@@ -324,6 +331,7 @@ syscall_handler (struct intr_frame *f)
         if(!is_valid_str(filename)) {
           goto exit;
         }
+//        printf("mkdir %s\n", filename);
         uint32_t success = 0;
         struct dir* current;
         struct inode* inode;
@@ -417,6 +425,7 @@ static int get_next_fd() {
     if(thread_current()->fds[j] == NULL)
       return j;
   }
+  printf("WARNING: fd not found\n");
   return -1; // free index not found
 }
 

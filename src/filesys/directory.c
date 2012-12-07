@@ -26,6 +26,7 @@ struct dir_entry
 bool
 dir_create (block_sector_t sector, block_sector_t parent)
 {
+//  if(sector == 229) { printf("making dir at sector 229\n"); }
   bool success = inode_create (sector, 2*sizeof(struct dir_entry), true);
   if(success) {
     struct dir *dir = dir_open(inode_open(sector));
@@ -105,7 +106,7 @@ lookup (const struct dir *dir, const char *name,
   ASSERT (name != NULL);
 
   for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
-       ofs += sizeof e) 
+       ofs += sizeof e) {
     if (e.in_use && !strcmp (name, e.name)) 
       {
         if (ep != NULL)
@@ -114,6 +115,7 @@ lookup (const struct dir *dir, const char *name,
           *ofsp = ofs;
         return true;
       }
+  }
   return false;
 }
 
@@ -130,10 +132,15 @@ dir_lookup (const struct dir *dir, const char *name,
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
 
-  if (lookup (dir, name, &e, NULL))
+  if (lookup (dir, name, &e, NULL)) {
     *inode = inode_open (e.inode_sector);
-  else
+    if( *inode == NULL ) {
+      printf("failed to open inode for %s at sector %u\n", e.name, e.inode_sector);
+    }
+  } else {
+//    printf("lookup %s failed\n", name);
     *inode = NULL;
+  }
 
   return *inode != NULL;
 }
@@ -199,18 +206,24 @@ dir_remove (struct dir *dir, const char *name)
   ASSERT (name != NULL);
 
   /* Find directory entry. */
-  if (!lookup (dir, name, &e, &ofs))
+  if (!lookup (dir, name, &e, &ofs)) {
+    printf("lookup failed\n");
     goto done;
+  }
 
   /* Open inode. */
   inode = inode_open (e.inode_sector);
-  if (inode == NULL)
+  if (inode == NULL) {
+    printf("unable to lookup inode\n");
     goto done;
+  }
 
   /* Erase directory entry. */
   e.in_use = false;
-  if (inode_write_at (dir->inode, &e, sizeof e, ofs) != sizeof e) 
+  if (inode_write_at (dir->inode, &e, sizeof e, ofs) != sizeof e) {
+    printf("write failed\n");
     goto done;
+  }
 
   /* Remove inode. */
   inode_remove (inode);
@@ -239,4 +252,19 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
         } 
     }
   return false;
+}
+
+bool dir_isempty(struct dir *dir)
+{
+  struct dir_entry e;
+  off_t pos = sizeof(e) * 2;
+  while (inode_read_at (dir->inode, &e, sizeof e, pos) == sizeof e)
+    {
+      pos += sizeof e;
+      if (e.in_use)
+        {
+          return false;
+        }
+    }
+  return true;
 }

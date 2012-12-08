@@ -1,6 +1,7 @@
 #include "userprog/process.h"
 #include <debug.h>
 #include <inttypes.h>
+#include <list.h>
 #include <round.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +24,7 @@
 
 #define CMD_LIMIT 1024    /* Size limit of the command line     */
 char cmdstore[CMD_LIMIT]; /* Temporary storage for command line */
+
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -54,7 +56,9 @@ process_execute (const char *file_name)
   memcpy(cmdstore,file_name,len+1); // copy file_name into an array, since str_tok will modify the parsed string
   name = strtok_r(cmdstore, " ", &name_ptr);
   /* Create a new thread to execute FILE_NAME. */
+
   tid = thread_create (name, PRI_DEFAULT, start_process, fn_copy);
+
 
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
@@ -104,6 +108,7 @@ start_process (void *file_name_)
   /* If load failed, quit. */
   /* Increment the semaphores for exec and wait to ensure mutual exclusion among different processes*/
   if (!success) {
+//    printf("load failed\n");
     t->load_status = 0;
     sema_up(&t->loaded);
     statuses[t->tid] = -1;
@@ -141,7 +146,7 @@ start_process (void *file_name_)
   /* The program will know that this process is currently running, and currently running processes can't allow writes */
   t->exec = filesys_open(parsed_filename);
   file_deny_write(t->exec);
-  palloc_free_page(parsed_filename); 
+  palloc_free_page(parsed_filename);
   t->load_status = 1;
   sema_up(&t->loaded);
 
@@ -401,7 +406,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Set up stack. */
   if (!setup_stack (esp)) {
-//    printf("load: unable to setup stack\n");
+    printf("load: unable to setup stack\n");
     goto done;
   }
 
@@ -485,7 +490,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 {
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
-  ASSERT (ofs % PGSIZE == 0);
+  ASSERT (ofs % PGSIZE == 0); 
 
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
@@ -496,26 +501,58 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+      if( frame_pointer > 10 /*magiclol*/ && !page_read_bytes ) {
+          init_page(upage, !writable, 1, NULL, 0);
+      } else if( page_read_bytes == PGSIZE ) {
+          init_page(upage, !writable, 0, file, ofs);
+          ofs += page_read_bytes;
+          file_seek(file, ofs);
+      } else {
+
+      int frame_index = allocate_frame_index();
+
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        return false;
+      // if page not found, page fault
+      if (kpage == NULL) {
+//        printf("cheater cheater pumpkin eater\n");
+        kpage = palloc_get_page(0);
+        if(kpage == NULL) {
+          deallocate_frame_index(frame_index);
+//        printf("PGSIZE: %d\n", PGSIZE);
+//        printf("read bytes: %u\n", page_read_bytes);
+//        printf("zero bytes: %u\n", page_zero_bytes);
+          printf("unable to allocate page");
+          return false;
+        }
+      }
 
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
           palloc_free_page (kpage);
-          return false; 
+          deallocate_frame_index(frame_index);
+          printf("file not read\n");
+          return false;
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
+      if (!install_page (upage, kpage, writable))
         {
           palloc_free_page (kpage);
-          return false; 
+          deallocate_frame_index(frame_index);
+          printf("unable to install page\n");
+          return false;
         }
 
+//      if(!page_zero_bytes) {
+//        unsigned *pvals = kpage;
+//        printf("demand page: %x %x %x %x\n",*pvals, *(pvals+1), *(pvals+2), *(pvals+3));
+//      }
+      struct page *p = init_page(upage, !writable, 0, NULL, 0);
+      add_page_to_frames(p, frame_index);
+      }
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -529,18 +566,34 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
+  bool success = add_stack();
+  if (success) {
+    *esp = PHYS_BASE;
+  }
+  return success;
+}
+
+bool
+add_stack () {
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE;
-      else
-        palloc_free_page (kpage);
+  struct thread *t = thread_current();
+  if( t->stack_pages < STACK_LIMIT ) {
+    t->stack_pages++;
+    kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+    if(kpage == NULL) {
+      kpage = palloc_get_page(PAL_ZERO);
     }
+    if (kpage != NULL)
+    {
+      success = install_page (((uint8_t *) PHYS_BASE) - (t->stack_pages * PGSIZE), kpage, true);
+      if(!success) {
+        palloc_free_page (kpage);
+        t->stack_pages--;
+      }
+    }
+  }
   return success;
 }
 

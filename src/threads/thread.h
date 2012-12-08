@@ -2,10 +2,13 @@
 #define THREADS_THREAD_H
 
 #include <debug.h>
+#include <hash.h>
 #include <list.h>
 #include <stdint.h>
 #include <threads/synch.h>
 #include <devices/block.h>
+#include "threads/palloc.h"
+#include "filesys/file.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -25,6 +28,8 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+#define STACK_LIMIT (1<<11)
 
 /* A kernel thread or user process.
 
@@ -118,6 +123,9 @@ struct thread
     struct file *fds[16];               // keeps track of just this thread's currently open files.  Necessary to prevent child processes from inheriting the files
     struct file *exec;                  // the file that the current process is currently running; tracks if program can write to this process or not
     block_sector_t current_dir;
+
+    struct hash page_table;
+    unsigned short stack_pages;
   };
 
 /* If false (default), use round-robin scheduler.
@@ -158,4 +166,8 @@ int thread_get_load_avg (void);
 bool priority_cmp(const struct list_elem *, const struct list_elem *, void *);
 
 struct thread* thread_get_by_id(tid_t);
+
+struct page* init_page(void*, bool, bool, struct file*, off_t);
+struct page* get_page(void*);
+
 #endif /* threads/thread.h */

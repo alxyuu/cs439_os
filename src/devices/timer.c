@@ -269,7 +269,7 @@ real_time_delay (int64_t num, int32_t denom)
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000)); 
 }
 
-static bool tick_cmp(const struct list_elem *a, const struct list_elem *b, void* aux)
+static bool tick_cmp(const struct list_elem *a, const struct list_elem *b, void* aux UNUSED)
 {
   return list_entry(a,struct thread,sleepelem)->wake_ticks < list_entry(b,struct thread,sleepelem)->wake_ticks;
 }

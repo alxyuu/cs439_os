@@ -5,6 +5,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "userprog/syscall.h"
+#include "threads/palloc.h"
+#include "threads/vaddr.h"
+#include "userprog/process.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -65,7 +68,8 @@ exception_init (void)
 void
 exception_print_stats (void) 
 {
-  printf ("Exception: %lld page faults\n", page_fault_cnt);
+  printf ("Exception: %lld page faults, %lld zero reads, %lld demand reads, %lld swap reads, %lld swap writes\n", 
+                      page_fault_cnt,   zero_cnt,        demand_cnt,        swap_read_cnt,   swap_write_cnt);
 }
 
 /* Handler for an exception (probably) caused by a user process. */
@@ -87,8 +91,8 @@ kill (struct intr_frame *f)
     case SEL_UCSEG:
       /* User's code segment, so it's a user exception, as we
          expected.  Kill the user process.  */
-      printf ("%s: dying due to interrupt %#04x (%s).\n",
-              thread_name (), f->vec_no, intr_name (f->vec_no));
+      printf ("%s-%d: dying due to interrupt %#04x (%s).\n",
+              thread_name (), thread_current()->tid, f->vec_no, intr_name (f->vec_no));
       intr_dump_frame (f);
       thread_exit (); 
 
@@ -152,17 +156,57 @@ page_fault (struct intr_frame *f)
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-/*  printf ("Page fault at %p: %s error %s page in %s context.\n",
+
+  //debug_backtrace_all();
+
+  struct page* page = get_page(fault_addr);
+  if ( page == NULL || page->readonly && write ) 
+  {
+    //palloc_free_page(fault_addr);
+    if( fault_addr < f->ebp && fault_addr > (f->esp - (2<<6)) && add_stack()) {
+//      printf("grow stack\n");
+//      add_stack();
+    } else {
+/*  printf ("Page fault at %p by %s id:%d: %s error %s page in %s context.\n",
           fault_addr,
+          thread_name(),
+          thread_current()->tid,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
+
+    debug_backtrace();
 */
-  f->esp = NULL;
-  syscall_handler(f);
-  kill(f);
-     
- // palloc_free_page(palloc_get_page(&fault_addr)); // free the page that causes the page fault
+//      printf("kill\n");
+      f->esp = NULL;
+      syscall_handler(f); // process exits with status -1
+    }
+    //    kill(f);
+  }
+  else {
+//    printf("page found \n");
+    // locate the faulting address in the supplemental page table
+    // use the corresponding entry to (locate the data that goes in the page)
+    restore_page( page ); // update the PTE as valid in memory instead of creating a new page
+  }
+
+/*How page fault handler works? 
+The kernel raises a page fault exception when a process accesses a page that is not in memory. The page fault is serviced as follows:-
+1. The page fault handler first retrieves the address of the faulting page from one of the CPU control registers.
+2. If the page is unmapped, that is, if there’s no data there, or if the page lies within kernel virtual memory, or if the access is an attempt to write to a read-only page, then the access is invalid. Any invalid access terminates the process and thereby frees all of its resources.
+￼￼29
+3. If the memory reference is valid, the frame table entry associated with the page that has faulted is obtained.
+4. The frame table entry is used to locate the data that goes in the page, which might be in the file system, or in a swap slot, or it might simply be an all-zero page, or it might already be swapped into the memory by another process, which shares that page.
+5. If the frame is already present in the memory (swapped in by a process that shares the page), then the frame only needs to be located. Otherwise, a new frame is obtained to store the page. And when all the memory has been exhausted, a frame must be made available by evicting some victim frame, chosen by the eviction algorithm.
+6. Next, the data is fetched into the frame, by
+a. Reading it from the file system or a swap slot if the frame is on the disk.
+b. Zeroing it out if the frame table entry indicates that it is an all-zero page.
+If the frame is already available in memory as a page of another process sharing
+this page, then no action is necessary in this step.
+7. The page table entry (PTE) of the page and all its aliases will be updated to
+indicate that the page and its aliases are now available in memory.
+8. The process is put back into the ready queue, so that it can resume execution from
+the faulting instruction, when it is next scheduled to run.*/
 }
 
 

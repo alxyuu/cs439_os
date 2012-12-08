@@ -107,6 +107,8 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
   ASSERT (pd != init_page_dir);
 
   pte = lookup_page (pd, upage, true);
+//  printf("creating page pte: %p\n", pte);
+//  printf("upage: %p\n", upage);
 
   if (pte != NULL) 
     {
@@ -130,6 +132,9 @@ pagedir_get_page (uint32_t *pd, const void *uaddr)
   ASSERT (is_user_vaddr (uaddr));
   
   pte = lookup_page (pd, uaddr, false);
+//  printf("getting page pte: %p\n", pte);
+//  printf("upage: %p\n", uaddr);
+
   if (pte != NULL && (*pte & PTE_P) != 0)
     return pte_get_page (*pte) + pg_ofs (uaddr);
   else

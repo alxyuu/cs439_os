@@ -13,6 +13,7 @@
 #include "threads/interrupt.h"
 #include <list.h>
 #include "threads/palloc.h"
+#include "userprog/process.h"
 
 static int get_next_fd(void);
 
@@ -24,7 +25,8 @@ syscall_init (void)
 
 /* Makes sure that p is a user-virtual address, non-null, and already mapped into physical memory */
 bool is_valid_addr(void *p) {
-  return p != NULL && is_user_vaddr(p) && pagedir_get_page(thread_current()->pagedir, p) != NULL;
+//  printf("invalid addr: %p\n", p);
+  return p != NULL && is_user_vaddr(p) /*&& pagedir_get_page(thread_current()->pagedir, p) != NULL*/;
 }
 
 /* Makes sure that string p is valid, based on the same criteria above */
@@ -46,8 +48,9 @@ syscall_handler (struct intr_frame *f)
   int status = -1;
   struct thread* t = thread_current();
 
+//  printf("handling esp: %p\n",f->esp);
   if(!is_valid_addr(f->esp)) {
-    sys_num = SYS_EXIT;
+    goto exit;
   } else {
     sys_num = *(int*)(f->esp);
   }
@@ -62,7 +65,7 @@ syscall_handler (struct intr_frame *f)
       if(!is_valid_addr(f->esp+4)) {
         goto exit;
       } else {
-        const char *cmd_line = *(char**)(f->esp+4);
+        char *cmd_line = *(char**)(f->esp+4);
         if(!is_valid_str(cmd_line)) {
           goto exit;
         }
@@ -95,7 +98,7 @@ syscall_handler (struct intr_frame *f)
       if(!is_valid_addr(f->esp+4) || !is_valid_addr(f->esp+8)) {
         goto exit;
       } else {
-        const char *file = *(char**)(f->esp+4);
+        char *file = *(char**)(f->esp+4);
         unsigned size = *(unsigned*)(f->esp+8);
         if(!is_valid_str(file)) {
           goto exit;
@@ -113,7 +116,7 @@ syscall_handler (struct intr_frame *f)
       if(!is_valid_addr(f->esp+4)) {
         goto exit;
       } else {
-        const char *file = *(char**)(f->esp+4);
+        char *file = *(char**)(f->esp+4);
         if(!is_valid_str(file)) {
           goto exit;
         }
@@ -129,7 +132,7 @@ syscall_handler (struct intr_frame *f)
       if(!is_valid_addr(f->esp+4)) {
         goto exit;
       } else {
-        const char *filename = *(char**)(f->esp+4);
+        char *filename = *(char**)(f->esp+4);
         if(!is_valid_str(filename)) {
           goto exit;
         }
@@ -354,8 +357,12 @@ syscall_handler (struct intr_frame *f)
     }
     default:
       exit:
-      file_allow_write(t->exec);
-      file_close(t->exec);
+      //debug_backtrace();
+//      PANIC("GIVE ME A TRACE");
+      if(t->exec != NULL) {
+        file_allow_write(t->exec);
+        file_close(t->exec);
+      }
       statuses[t->tid] = status;
       printf("%s: exit(%d)\n",t->name, status);
       thread_exit();

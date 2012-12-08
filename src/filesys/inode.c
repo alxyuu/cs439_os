@@ -399,11 +399,17 @@ inode_open (block_sector_t sector)
 
 	/* Allocate memory. */
 	inode = malloc (sizeof *inode);
-	if (inode == NULL)
-		return NULL;
+	if (inode == NULL) {
+		printf("failed malloc\n");
+		inode = palloc_get_page(004);
+		if( inode == NULL) {
+//			debug_filesys();
+			printf( "fuck me\n");
+			return NULL;
+		}
+	}
 
 	/* Initialize. */
-	list_push_front (&open_inodes, &inode->elem);
 	inode->sector = sector;
 	inode->open_cnt = 1;
 	inode->deny_write_cnt = 0;
@@ -413,8 +419,11 @@ inode_open (block_sector_t sector)
 	inode->secondIndirectBlocks = NULL;
 	block_read (fs_device, inode->sector, &inode->data);
 	if(inode->data.magic & INODE_MAGIC_DIR != INODE_MAGIC_DIR) {
+		free(inode);
+		printf("failed magic\n");
 		return NULL;
 	}
+	list_push_front (&open_inodes, &inode->elem);
 	return inode;
 }
 

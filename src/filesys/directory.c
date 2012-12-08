@@ -30,6 +30,10 @@ dir_create (block_sector_t sector, block_sector_t parent)
   bool success = inode_create (sector, 2*sizeof(struct dir_entry), true);
   if(success) {
     struct dir *dir = dir_open(inode_open(sector));
+    if(!dir) {
+      printf("inode: %p\n", inode_open(sector));
+      printf("sector: %u\n", sector);
+    }
     dir_add(dir, ".", sector);
     dir_add(dir, "..", parent);
   }
@@ -50,6 +54,8 @@ dir_open (struct inode *inode)
     }
   else
     {
+      printf("inode: %p\n");
+	printf("dir: %p\n");
       inode_close (inode);
       free (dir);
       return NULL; 
@@ -207,21 +213,24 @@ dir_remove (struct dir *dir, const char *name)
 
   /* Find directory entry. */
   if (!lookup (dir, name, &e, &ofs)) {
-    printf("lookup failed\n");
+//    printf("lookup failed\n");
     goto done;
   }
 
   /* Open inode. */
   inode = inode_open (e.inode_sector);
   if (inode == NULL) {
-    printf("unable to lookup inode\n");
+//    printf("unable to lookup inode\n");
+    goto done;
+  }
+  if (inode_isdir(inode) && !dir_isempty(dir_open(inode))) {
     goto done;
   }
 
   /* Erase directory entry. */
   e.in_use = false;
   if (inode_write_at (dir->inode, &e, sizeof e, ofs) != sizeof e) {
-    printf("write failed\n");
+//    printf("write failed\n");
     goto done;
   }
 
@@ -267,4 +276,31 @@ bool dir_isempty(struct dir *dir)
         }
     }
   return true;
+}
+
+void debug_dir(struct dir * dir, int tabs) {
+  char name[15];
+  int i;
+  struct dir_entry e;
+  off_t pos = sizeof(e) * 2;
+
+  while (inode_read_at (dir->inode, &e, sizeof e, pos) == sizeof e)
+  {
+      pos += sizeof e;
+      if (e.in_use)
+      {
+        for(i = 0; i < tabs; i++) {
+          printf("\t");
+        }
+        struct inode *inode = inode_open(e.inode_sector);
+        if(inode_isdir(inode)) {
+          printf("d:%s:%u:%u\n", e.name, e.inode_sector, inode_length(inode));
+          debug_dir(dir_open(inode), tabs+1);
+        } else {
+          printf("f:%s:%u:%u\n", e.name, e.inode_sector, inode_length(inode));
+          inode_close(inode);
+        }
+      }
+  }
+  dir_close(dir);
 }

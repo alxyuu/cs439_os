@@ -135,9 +135,11 @@ syscall_handler (struct intr_frame *f)
         }
         int fd = get_next_fd();
         struct file *file = filesys_open(filename);
-        if (file == NULL)
+        if (file == NULL) {
+//           printf("failed opening %s\n", filename);
+//           debug_filesys();
            f->eax = -1;
-        else {
+        } else {
            t->fds[fd] = file;
            f->eax = fd;
         }
@@ -281,43 +283,18 @@ syscall_handler (struct intr_frame *f)
         if(!is_valid_str(filename)) {
           goto exit;
         }
-        uint32_t success = 1;
-        struct dir* current;
-        struct inode* inode;
-        if(*filename == '/') { //absolute
-          current = dir_open(inode_open(ROOT_DIR_SECTOR));
-        } else {
-          current = dir_open(inode_open(thread_current()->current_dir));
-          if(current == NULL) {
-            printf("current sector: %u\n", thread_current()->current_dir);
-            debug_filesys();
-            f->eax = 0;
-            break;
+
+        uint32_t success = 0;
+        char file[15];
+        struct dir* working = get_working_dir(filename, file);
+        if(working != NULL) {
+          struct inode *inode;
+          if(dir_lookup(working, file, &inode) && inode_isdir(inode)) {
+            thread_current()->current_dir = inode_get_inumber(inode);
+            inode_close(inode);
+            success = 1;
           }
-        }
-        char *name;
-        char *save_ptr;
-        for (name = strtok_r(filename, "/", &save_ptr); name != NULL; name = strtok_r(NULL, "/", &save_ptr)) {
-          if(*name != '\0') {
-            if(!dir_lookup(current, name, &inode)) {
-              success = 0;
-              break;
-            } else {
-              if(!inode_isdir(inode)) {
-                success = 0;
-                break;
-              } else {
-                dir_close(current);
-                current = dir_open(inode);
-              }
-            }
-          }
-        }
-        if(success && current != NULL) {
-          thread_current()->current_dir = inode_get_inumber(dir_get_inode(current));
-          dir_close(current);
-        } else {
-          success = 0;
+          dir_close(working);
         }
         f->eax = success;
         break;
@@ -333,52 +310,18 @@ syscall_handler (struct intr_frame *f)
         }
 //        printf("mkdir %s\n", filename);
         uint32_t success = 0;
-        struct dir* current;
-        struct inode* inode;
-        if(*filename == '/') { //absolute
-          current = dir_open(inode_open(ROOT_DIR_SECTOR));
-        } else {
-          current = dir_open(inode_open(thread_current()->current_dir));
-        }
-        char *name;
-        char *save_ptr;
-        char *newdir;
-        for (name = strtok_r(filename, "/", &save_ptr); name != NULL; name = strtok_r(NULL, "/", &save_ptr)) {
-          if(*name != '\0') {
-            if(!dir_lookup(current, name, &inode)) {
-              newdir = name;
-              name = strtok_r(NULL, "/", &save_ptr);
-              success = 1;
-              while(name != NULL) {
-                if(*name != '\0') {
-                  success = 0;
-                  break;
-                }
-                name = strtok_r(NULL, "/", &save_ptr);
-              }
-              break;
-            } else {
-              if(!inode_isdir(inode)) {
-                break;
-              } else {
-                dir_close(current);
-                current = dir_open(inode);
-              }
-            }
-          }
-        }
-        if(success && current != NULL && newdir != NULL) {
+        char file[15];
+        struct dir* working = get_working_dir(filename, file);
+
+        if(working != NULL) {
           block_sector_t sector;
-          if(!free_map_allocate(1, &sector) ||
-             !dir_create(sector, inode_get_inumber(dir_get_inode(current))) ||
-             !dir_add(current, newdir, sector)) {
-            success = 0;
+          if(free_map_allocate(1, &sector) &&
+             dir_create(sector, inode_get_inumber(dir_get_inode(working))) &&
+             dir_add(working, file, sector)) {
+//            printf("dir made at sector %u\n",sector);
+            success = 1;
           }
-        } else {
-          success = 0;
-        }
-        if(current != NULL) {
-          dir_close(current);
+          dir_close(working);
         }
         f->eax = success;
         break;

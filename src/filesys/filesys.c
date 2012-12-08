@@ -41,65 +41,27 @@ filesys_done (void)
 {
   free_map_close ();
 }
-
+
 
 /* Creates a file named NAME with the given INITIAL_SIZE.
    Returns true if successful, false otherwise.
    Fails if a file named NAME already exists,
    or if internal memory allocation fails. */
 bool
-filesys_create (const char *name, off_t initial_size) 
+filesys_create (const char *name, off_t initial_size)
 {
+//  printf("creating %s\n",name);
   block_sector_t inode_sector = 0;
-  struct dir* current;
-  struct inode* inode;
-  char* filename = malloc(sizeof(char) * (strlen(name) + 1));
-  strlcpy(filename, name, strlen(name) + 1);
-  if(*filename == '/') { //absolute
-    current = dir_open_root();
-  } else {
-    if(!thread_current()->current_dir) {
-      thread_current()->current_dir = ROOT_DIR_SECTOR;
-    }
-    inode = inode_open(thread_current()->current_dir);
-    if(inode == NULL) {
-      return false;
-    }
-    current = dir_open(inode);
-  }
-  bool success = false;
-  char *token;
-  char *save_ptr;
-  char *newfile;
-  for (token = strtok_r(filename, "/", &save_ptr); token != NULL; token = strtok_r(NULL, "/", &save_ptr)) {
-    if(*token != '\0') {
-      if(!dir_lookup(current, token, &inode)) {
-        newfile = token;
-        token = strtok_r(NULL, "/", &save_ptr);
-        success = token == NULL;
-        break;
-      } else {
-        if(!inode_isdir(inode)) {
-          break;
-        } else {
-          dir_close(current);
-          current = dir_open(inode);
-        }
-      }
-    }
-  }
-
-  if(success) {
-       success = (current != NULL
+  char filename[NAME_MAX+1];
+  struct dir *dir = get_working_dir(name, filename);
+  bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, false)
-                  && dir_add (current, newfile, inode_sector));
-  }
+                  && dir_add (dir, filename, inode_sector));
   if (!success && inode_sector != 0)
     free_map_release (inode_sector, 1);
+  dir_close (dir);
 
-  free(filename);
-  dir_close (current);
   return success;
 }
 
@@ -111,74 +73,14 @@ filesys_create (const char *name, off_t initial_size)
 struct file *
 filesys_open (const char *name)
 {
+  char filename[NAME_MAX+1];
+  struct dir *dir = get_working_dir(name, filename);
   struct inode *inode = NULL;
-//  printf("opening %s\n",name);
-  struct dir* current;
-  char* filename = malloc(sizeof(char) * (strlen(name) + 1));
-  strlcpy(filename, name, strlen(name) + 1);
-  if(*filename == '/') { //absolute
-    current = dir_open_root();
-  } else {
-    if(!thread_current()->current_dir) {
-      thread_current()->current_dir = ROOT_DIR_SECTOR;
-    }
-    inode = inode_open(thread_current()->current_dir);
-//    printf("opened inode at sector %u\n", inode_get_inumber(inode));
-    if(inode == NULL) {
-      return NULL;
-    }
-    current = dir_open(inode);
-  }
-  bool success = false;
-  char *token;
-  char *save_ptr;
-  char *newfile;
-  bool isdir = false;
-  if(!strcmp(filename,"/")) {
-    newfile = ".";
-    success = true;
-  } else {
-  for (token = strtok_r(filename, "/", &save_ptr); token != NULL; token = strtok_r(NULL, "/", &save_ptr)) {
-    if(*token != '\0') {
-      if(!dir_lookup(current, token, &inode)) {
-        break;
-      } else {
-        if(!inode_isdir(inode)) {
-          newfile = token;
-          token = strtok_r(NULL, "/", &save_ptr);
-          isdir = false;
-          if(token == NULL) {
-            success = true;
-          }
-          break;
-        } else {
-          dir_close(current);
-          current = dir_open(inode);
-          isdir = true;
-        }
-      }
-    }
-  }
-  }
 
-  if (success && current != NULL) {
-    if(isdir){
-      dir_lookup(current, "..", &inode);
-      dir_close(current);
-      current = dir_open(inode);
-    }
-    dir_lookup (current, newfile, &inode);
-  }
-/*  if(inode == NULL) {
-    printf("success: %u\n", success);
-    printf("current: %p\n", current);
-    printf("inode: %p\n", dir_get_inode(current));
-    printf("sector: %u\n", inode_get_inumber(dir_get_inode(current)));
-    printf("current dir: %u\n", thread_current()->current_dir);
-    //debug_filesys();
-  }*/
-  free(filename);
-  dir_close (current);
+  if (dir != NULL)
+    dir_lookup (dir, filename, &inode);
+  dir_close (dir);
+
   return file_open (inode);
 }
 
@@ -187,61 +89,16 @@ filesys_open (const char *name)
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 bool
-filesys_remove (const char *name) 
+filesys_remove (const char *name)
 {
-  struct inode *inode = NULL;
+  char filename[NAME_MAX + 1];
+  struct dir *dir = get_working_dir(name, filename);
+  bool success = dir != NULL && dir_remove (dir, filename);
+  dir_close (dir);
 
-  struct dir* current;
-  char* filename = malloc(sizeof(char) * (strlen(name) + 1));
-  strlcpy(filename, name, strlen(name) + 1);
-  if(*filename == '/') { //absolute
-    current = dir_open_root();
-  } else {
-    if(!thread_current()->current_dir) {
-      thread_current()->current_dir = ROOT_DIR_SECTOR;
-    }
-    inode = inode_open(thread_current()->current_dir);
-    if(inode == NULL) {
-      return false;
-    }
-    current = dir_open(inode);
-  }
-  bool success = false;
-  bool isdir = true;
-  char *token;
-  char *save_ptr;
-  char *toremove;
-  for (token = strtok_r(filename, "/", &save_ptr); token != NULL; token = strtok_r(NULL, "/", &save_ptr)) {
-    if(*token != '\0') {
-      if(!dir_lookup(current, token, &inode)) {
-        success = false;
-        break;
-      } else {
-        toremove = token;
-        if(!inode_isdir(inode)) {
-          token = strtok_r(NULL, "/", &save_ptr);
-          isdir = false;
-          success = token == NULL;
-          break;
-        } else {
-          dir_close(current);
-          current = dir_open(inode);
-          success = dir_isempty(current);
-        }
-      }
-    }
-  }
-
-  if(success && isdir){
-    dir_lookup(current, "..", &inode);
-    dir_close(current);
-    current = dir_open(inode);
-  }
-  success = success && current != NULL && toremove != NULL & dir_remove(current, toremove);
-  dir_close (current);
   return success;
 }
-
+
 /* Formats the file system. */
 static void
 do_format (void)
@@ -254,46 +111,79 @@ do_format (void)
   printf ("done.\n");
 }
 
-static void debug_folder(struct dir * dir, int tabs, block_sector_t sector) {
-  char name[15];
-  int i;
-  thread_current()->current_dir = sector;
-
-  while(dir_readdir(dir, name)) {
-    for(i = 0; i < tabs; i++) {
-      printf("\t");
-    }
-    if(name[0] == '.') {
-      printf("%s\n", name);
-      continue;
-    }
-    printf("ASDFADSFASDF\n");
-    struct file *file = filesys_open(name);
-    printf("opening %s\n", name);
-    printf("file: %p\n", file);
-    printf("inode: %p\n", file_get_inode(file));
-    if(inode_isdir(file_get_inode(file))) {
-      printf("HI\n");
-      printf("d:%s:%u\n", name, inode_get_inumber(file_get_inode(file)));
-      debug_folder((struct dir*)file, tabs+1, inode_get_inumber(file_get_inode(file)));
-      thread_current()->current_dir = sector;
-    } else {
-      printf("HI\n");
-      printf("f:%s:%u\n", name, inode_get_inumber(file_get_inode(file)));
-    }
-    file_close(file);
-  }
-  dir_close(dir);
+void debug_filesys() {
+  debug_dir(dir_open_root(), 0);
 }
 
-void debug_filesys() {
-  char name[15];
-  struct dir* dir = dir_open_root();
-  printf("root:\n");
-  while(dir_readdir(dir, name)) {
-    printf("%s\n", name);
+
+struct dir* get_working_dir(char *filename, char name_out[NAME_MAX + 1]) {
+
+  struct dir* current = NULL;
+  struct inode* inode = NULL;
+
+  // /home/asdf/hi//
+  // /home/asdf/a (directory)
+  // /home/asdf/.
+  // /a/..
+  // /.
+  // /..
+  // ////
+  // //0/1
+  // /home/asdf/hi// (empty file)
+  // /home/asdf/hi/../file
+
+  if(*filename == '/') { //absolute
+    current = dir_open_root();
+  } else {
+    if(!thread_current()->current_dir) {
+      thread_current()->current_dir = ROOT_DIR_SECTOR;
+    }
+    inode = inode_open(thread_current()->current_dir);
+    if(inode == NULL) {
+      goto done;
+    }
+    current = dir_open(inode);
   }
-  thread_current()->current_dir = ROOT_DIR_SECTOR;
-  debug_folder(dir_open_root(), 0, ROOT_DIR_SECTOR);
+  bool success = false;
+  bool isdir = false;
+  block_sector_t prevdir = inode_get_inumber(dir_get_inode(current));
+  char *token;
+  char *save_ptr;
+  char *fileout = "";
+  for (token = strtok_r(filename, "/", &save_ptr); token != NULL; token = strtok_r(NULL, "/", &save_ptr)) {
+    if(*token != '\0') {
+      fileout = token;
+      if(!dir_lookup(current, token, &inode)) {
+        isdir = false;
+        token = strtok_r(NULL, "/", &save_ptr);
+        success = token == NULL;
+        break;
+      } else {
+        if(!inode_isdir(inode)) {
+          isdir = false;
+          token = strtok_r(NULL, "/", &save_ptr);
+          success = token == NULL;
+          break;
+        } else {
+          isdir = true;
+          prevdir = inode_get_inumber(dir_get_inode(current));
+          dir_close(current);
+          current = dir_open(inode);
+        }
+      }
+    }
+  }
+
+  if(isdir) {
+    dir_close(current);
+    current = dir_open(inode_open(prevdir));
+  }
+  if(strlen(fileout) < NAME_MAX + 1) {
+    strlcpy(name_out, fileout, strlen(fileout) + 1);
+  } else {
+    current = NULL;
+  }
+  done:
+  return current;
 }
 

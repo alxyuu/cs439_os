@@ -77,6 +77,10 @@ filesys_open (const char *name)
   struct dir *dir = get_working_dir(name, filename);
   struct inode *inode = NULL;
 
+  if(*name == '/' && *filename == '\0') {
+    *filename = '.';
+    *(filename + 1) = '\0';
+  }
   if (dir != NULL)
     dir_lookup (dir, filename, &inode);
   dir_close (dir);
@@ -116,7 +120,7 @@ void debug_filesys() {
 }
 
 
-struct dir* get_working_dir(char *filename, char name_out[NAME_MAX + 1]) {
+struct dir* get_working_dir(const char *path, char name_out[NAME_MAX + 1]) {
 
   struct dir* current = NULL;
   struct inode* inode = NULL;
@@ -131,6 +135,9 @@ struct dir* get_working_dir(char *filename, char name_out[NAME_MAX + 1]) {
   // //0/1
   // /home/asdf/hi// (empty file)
   // /home/asdf/hi/../file
+
+  char *filename = malloc(sizeof(char) * (strlen(path) + 1));
+  strlcpy(filename, path, strlen(path) + 1);
 
   if(*filename == '/') { //absolute
     current = dir_open_root();
@@ -184,6 +191,7 @@ struct dir* get_working_dir(char *filename, char name_out[NAME_MAX + 1]) {
     current = NULL;
   }
   done:
+  free(filename);
   return current;
 }
 

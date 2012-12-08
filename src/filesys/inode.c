@@ -58,7 +58,6 @@ struct inode
 	struct inode_disk data;             /* Inode content. */
 };
 
-static unsigned count;
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
 static inline size_t
@@ -377,16 +376,8 @@ inode_open (block_sector_t sector)
 
 	/* Allocate memory. */
 	inode = malloc (sizeof *inode);
-	count++;
-	printf("malloc new inode %u size %u\n", count, sizeof *inode);
 	if (inode == NULL) {
-		printf("failed malloc\n");
-		inode = palloc_get_page(004);
-		if( inode == NULL) {
-//			debug_filesys();
-			printf( "fuck me\n");
-			return NULL;
-		}
+		return NULL;
 	}
 
 	/* Initialize. */

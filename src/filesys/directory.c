@@ -36,6 +36,7 @@ dir_create (block_sector_t sector, block_sector_t parent)
     }
     dir_add(dir, ".", sector);
     dir_add(dir, "..", parent);
+    dir_close(dir);
   }
   return success;
 }
